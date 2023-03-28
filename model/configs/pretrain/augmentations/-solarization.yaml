@@ -11,9 +11,9 @@
   grayscale:
     prob: 0.5
   gaussian_blur:
-    prob: 0.
+    prob: 0.5
   solarization:
-    prob: 0.2
+    prob: 0.
   equalization:
     prob: 0.0
   horizontal_flip:
