@@ -1,9 +1,9 @@
 *.pyc
-data/pretrain/images
-data/test/images
-data/train/images
-history/
-logs/
-trained_models
-wandb
+./data/pretrain/images
+./data/test/images
+./data/train/images
+./history
+./logs
+./trained_models
+./wandb
 

@@ -450,7 +450,8 @@ class SupervisedModel(pl.LightningModule):
             if self.trainer.current_epoch == self.max_epochs - 1:
                 # if this is the last epoch, draw PR curve and ROC curve
                 # 绘制PR曲线
-                fig_pr, ax_pr = plt.subplots()
+                fig_pr, ax_pr = plt.subplots(1, 1, figsize=(8, 8), dpi=200)
+                ax_pr.set_aspect('equal')
                 ax_pr.plot(*all_metrics["pr_curve"])
                 ax_pr.set_title("P-R Curve")
                 ax_pr.set_xlabel("R")
@@ -458,7 +459,7 @@ class SupervisedModel(pl.LightningModule):
                 wandb.log({'PR Curve': wandb.Image(fig_pr)}, commit=False)
 
                 # 绘制ROC曲线
-                fig_roc, ax_roc = plt.subplots()
+                fig_roc, ax_roc = plt.subplots(1, 1, figsize=(8, 8), dpi=200)
                 ax_roc.plot(*all_metrics["roc_curve"])
                 ax_roc.set_title("ROC Curve")
                 ax_roc.set_xlabel("FPR")
@@ -472,10 +473,11 @@ class SupervisedModel(pl.LightningModule):
                 "macro_f1",
                 "micro_f1",
                 "p",
-                "macro_p"
+                "macro_p",
                 "r",
-                "macro_r",
+                "macro_r"
             ]
+        
             log = {key: all_metrics[key] for key in metrics_to_report if key in all_metrics}
             ap = all_metrics["ap"]
             macro_ap = ap["macro"]
@@ -495,29 +497,31 @@ class SupervisedModel(pl.LightningModule):
                 fpr, tpr = all_metrics["roc_curve"]
 
                 # plot PR curves
-                fig, axs = plt.subplots(1, self.num_classes + 1, sharex='col', sharey='row')
+                fig, axs = plt.subplots(1, self.num_classes + 1, figsize=(8 * (self.num_classes + 1), 8), dpi=200, sharex='col', sharey='row')
                 fig.suptitle("P-R Curves")
                 for i in range(self.num_classes + 1):
+                    axs[i].set_aspect('equal')
                     if i == self.num_classes:
                         axs[i].plot(r["micro"], p["micro"])
                         axs[i].set_title("micro")
                     else:
-                        axs[i].plot(r[f"class_{i}"], p[f"class_{i}"])
-                        axs[i].set_title(f"class_{i}")
+                        axs[i].plot(r[f"class{i}"], p[f"class{i}"])
+                        axs[i].set_title(f"class{i}")
                     axs[i].set_xlabel("R")
                     axs[i].set_ylabel("P")
                 wandb.log({"P-R": wandb.Image(fig)}, commit=False)
 
                 # plot ROC curves
-                fig, axs = plt.subplots(1, self.num_classes + 1, sharex='col', sharey='row')
+                fig, axs = plt.subplots(1, self.num_classes + 1, figsize=(8 * (self.num_classes + 1), 8), dpi=200, sharex='col', sharey='row')
                 fig.suptitle("ROC Curves")
                 for i in range(self.num_classes + 1):
+                    axs[i].set_aspect('equal')
                     if i == self.num_classes:
                         axs[i].plot(fpr["micro"], tpr["micro"])
                         axs[i].set_title("micro")
                     else:
-                        axs[i].plot(fpr[f"class_{i}"], tpr[f"class_{i}"])
-                        axs[i].set_title(f"class_{i}")
+                        axs[i].plot(fpr[f"class{i}"], tpr[f"class{i}"])
+                        axs[i].set_title(f"class{i}")
                     axs[i].set_xlabel("FPR")
                     axs[i].set_ylabel("TPR")
                 wandb.log({"ROC": wandb.Image(fig)}, commit=False)
