@@ -13,8 +13,7 @@ _N_CLASSES_PER_DATASET = {
     "cifar100": 100,
     "stl10": 10,
     "imagenet": 1000,
-    "imagenet100": 100,
-    "isic_archive": -1
+    "imagenet100": 100
 }
 
 def add_and_assert_dataset_cfg(cfg: omegaconf.DictConfig) -> omegaconf.DictConfig:
@@ -32,13 +31,10 @@ def add_and_assert_dataset_cfg(cfg: omegaconf.DictConfig) -> omegaconf.DictConfi
 
     # if validation path is not available, assume that we want to skip eval
     cfg.data.val_path = omegaconf_select(cfg, "data.val_path", None)
-    cfg.data.num_classes = omegaconf_select(cfg, "data.num_classes", \
-                                            _N_CLASSES_PER_DATASET.get(cfg.data.dataset, 2))
-    cfg.data.num_workers = omegaconf_select(cfg, "data.num_workers", 4)
-    
-    # TODO: items below remains
-    cfg.data.no_labels = omegaconf_select(cfg, "data.no_labels", False)
-    cfg.debug_augmentations = omegaconf_select(cfg, "debug_augmentations", False)
+    num_classes = _N_CLASSES_PER_DATASET.get(cfg.data.dataset, -1)
+    cfg.data.num_classes = omegaconf_select(cfg, "data.num_classes", num_classes)
+    cfg.data.num_workers = omegaconf_select(cfg, "data.num_workers", 8)
+    cfg.data.debug_augmentations = omegaconf_select(cfg, "data.debug_augmentations", False)
 
     return cfg
 

@@ -69,6 +69,10 @@ def main(cfg: DictConfig):
     for aug_cfg in cfg.augmentations:
         pipelines.append(TransformPipeline(cfg.data.dataset, aug_cfg, aug_cfg.num_crops))
     transform = FullTransformPipeline(pipelines)
+    
+    # debug data augmentation
+    if cfg.data.debug_augmentations:
+        print(str(transform))
 
     train_dataset = LightlyDataset(
         input_dir=cfg.data.train_path,

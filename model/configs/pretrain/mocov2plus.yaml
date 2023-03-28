@@ -11,7 +11,7 @@ hydra:
   run:
     dir: .
 
-name: "mocov2plus-alluse"
+name: "mocov2plus-symmetric"
 method: "mocov2plus"
 backbone:
   name: "resnet18"
@@ -27,6 +27,7 @@ data:
   dataset: isic_archive
   train_path: ./data/pretrain/images
   num_workers: 16
+  debug_augmentations: True
 optimizer:
   name: "sgd"
   batch_size: 256

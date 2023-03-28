@@ -239,6 +239,7 @@ class BaseMethod(pl.LightningModule):
         self.linear_eval = cfg.linear_eval
         if cfg.linear_eval:
             self.num_classes: int = cfg.data.num_classes
+            assert cfg.data.num_classes >= 2
             self.classifier: nn.Module = nn.Linear(self.features_dim, self.num_classes)
             self.classifier_lr: float = cfg.optimizer.classifier_lr * self.accumulate_grad_batches
             # classifier metrics
