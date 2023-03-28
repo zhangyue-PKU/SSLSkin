@@ -1,0 +1,7 @@
+*.pyc
+data/
+history/
+logs/
+trained_models
+wandb
+

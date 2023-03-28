@@ -1,0 +1,41 @@
+defaults:
+  - _self_
+  - wandb: private.yaml
+  - augmentations: augmentation.yaml
+  - override hydra/hydra_logging: disabled
+  - override hydra/job_logging: disabled
+
+# disable hydra outputs
+hydra:
+  output_subdir: null
+  run:
+    dir: .
+
+pretrain_method:
+backbone:
+  name: resnet18
+  ckpt:
+  skip_layers: []
+  kwargs:
+decoder:
+  name: unet
+  encoder_channels:
+  decoder_channels:
+  use_batchnorm: False
+  attention_type: attention_type
+  center: False
+classifier:
+  enabled: True
+  loss: ce
+  loss_kwargs:
+optimizer:
+  name: sgd
+  lr:
+  batch_size:
+  weight_decay:
+  kwargs:
+scheduler:
+  name: warmup_cosine
+loss:
+  name: dice
+  kwargs:

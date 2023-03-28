@@ -1,0 +1,55 @@
+defaults:
+  - _self_
+  - wandb: private.yaml
+  - augmentations: linear.yaml
+  - override hydra/hydra_logging: disabled
+  - override hydra/job_logging: disabled
+
+# disable hydra outputs
+hydra:
+  output_subdir: null
+  run:
+    dir: .
+
+name: "moby-isicarchive-linear"
+finetune: False # perform finetune or linear-probbing
+predict: True # whether call trainer.predict()
+pretrain:
+  method: "moby"
+  ckpt: "trained_models/moby/gmiv3reu/moby-run1-gmiv3reu-ep=99.ckpt" # pretrain ckpt
+  # ckpt: "trained_models/mocov2plus/sbyhf7s3/mocov2plus-sbyhf7s3-ep=64.ckpt" # pretrain ckpt
+  ckpt_key: "momentum_backbone" #ckpt key in ["backbone", "momentum_backbone"]
+backbone:
+  name: "resnet18"
+loss_fn: 
+  name: "focal" # choose from [ce, focal, label_smoothing_ce, soft_target_ce]
+data:
+  dataset: isic2020
+  train_path: "./data/train/images"
+  val_path: "./data/train/images"
+  pred_path: "./data/test/images"
+  train_label_file: "./data/train/train.csv"
+  val_label_file: "./data/train/val.csv"
+  num_workers: 16
+optimizer:
+  name: "sgd"
+  batch_size: 512
+  lr: 0.001
+  weight_decay: 0
+scheduler:
+  name: None
+checkpoint:
+  enabled: True
+  dir: "trained_models"
+  frequency: 1
+auto_resume:
+  enabled: False
+
+# pytorch-lightning trainer params
+max_epochs: 2
+devices: [0]
+sync_batchnorm: True
+accelerator: "gpu"
+strategy: "ddp"
+precision: 16
+log_every_n_steps: 25

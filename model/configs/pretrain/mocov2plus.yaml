@@ -1,0 +1,51 @@
+defaults:
+  - _self_
+  - augmentations: symmetric.yaml
+  - wandb: private.yaml
+  - override hydra/hydra_logging: disabled
+  - override hydra/job_logging: disabled
+
+# disable hydra outputs
+hydra:
+  output_subdir: null
+  run:
+    dir: .
+
+name: "mocov2plus-alluse"
+method: "mocov2plus"
+backbone:
+  name: "resnet18"
+method_kwargs:
+  proj_hidden_dim: 2048
+  proj_output_dim: 256
+  queue_size: 4096
+  temperature: 0.2
+momentum:
+  base_tau: 0.99
+  final_tau: 0.999
+data:
+  dataset: isic_archive
+  train_path: ./data/pretrain/images
+  num_workers: 16
+optimizer:
+  name: "sgd"
+  batch_size: 256
+  lr: 0.15
+  weight_decay: 1e-4
+scheduler:
+  name: "warmup_cosine"
+checkpoint:
+  enabled: True
+  dir: "trained_models"
+  frequency: 1
+auto_resume:
+  enabled: False
+
+
+# overwrite PL stuff
+max_epochs: 100
+devices: [1]
+sync_batchnorm: True
+accelerator: "gpu"
+strategy: "ddp"
+precision: 16

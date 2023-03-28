@@ -1,0 +1,52 @@
+defaults:
+  - _self_
+  - wandb: private.yaml
+  - augmentations: finetune.yaml
+  - override hydra/hydra_logging: disabled
+  - override hydra/job_logging: disabled
+
+# disable hydra outputs
+hydra:
+  output_subdir: null
+  run:
+    dir: .
+
+name: "byol-isicarchive-finetune"
+finetune: True
+pretrain:
+  method: "byol"
+  ckpt: "trained_models/byol/lan05rxt/byol-isic-lan05rxt-ep=99.ckpt"
+backbone:
+  name: "resnet50"
+data:
+  dataset: isic2020
+  train_path: "./data/train/images"
+  val_path: "./data/train/images"
+  train_label_file: "./data/train/train.csv"
+  val_label_file: "./data/train/val.csv"
+  num_workers: 16
+optimizer:
+  name: "sgd"
+  batch_size: 128
+  lr: 0.01
+  weight_decay: 5e-4
+scheduler:
+  name: "warmup_cosine"
+  warmup_start_lr: 0.0
+checkpoint:
+  enabled: True
+  dir: "trained_models"
+  frequency: 1
+auto_resume:
+  enabled: True
+label_smoothing: 0.1
+mixup: 0.8
+cutmix: 1.0
+finetune: True
+
+max_epochs: 100
+devices: [0]
+sync_batchnorm: True
+accelerator: "gpu"
+strategy: "ddp"
+precision: 16    
