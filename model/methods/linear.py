@@ -24,20 +24,27 @@ import pytorch_lightning as pl
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from pl_bolts.optimizers.lr_scheduler import LinearWarmupCosineAnnealingLR
 from model.methods.base import BaseMethod
 from model.utils.lars import LARS
-from model.utils.metrics import accuracy_at_k, weighted_mean
+from model.utils.knn import WeightedKNNClassifier
+from model.utils.metrics import (
+    accuracy_at_k, 
+    weighted_mean,
+    binary_metrics,
+    multiclass_metrics
+)
 from model.utils.misc import (
     omegaconf_select,
-    param_groups_layer_decay,
     remove_bias_and_norm_from_weight_decay,
 )
+from pl_bolts.optimizers.lr_scheduler import LinearWarmupCosineAnnealingLR
 from torch.optim.lr_scheduler import ExponentialLR, MultiStepLR, ReduceLROnPlateau
 from timm.data.mixup import Mixup
 from timm.loss import LabelSmoothingCrossEntropy, SoftTargetCrossEntropy
 from model.losses import SoftTargetFocalLoss, FocalLoss
 
+import matplotlib.pyplot as plt
+import wandb
 
 class LinearModel(pl.LightningModule):
          
@@ -73,37 +80,43 @@ class LinearModel(pl.LightningModule):
 
         backbone (nn.Module): backbone architecture for feature extraction.
         Cfg basic structure:
+            name: "Your running name"
+            finetune: boolean, finetune or linear eval
+            knn_eval: knn eval
+                enabled: True
+                k: 20
+                distance_func: "cosine"
+            pretrain:
+                method: "mocov2plus" # pretrain method
+                ckpt: pretrain ckpt
+                ckpt_key: "momentum_backbone" #ckpt key in ["backbone", "momentum_backbone"]
+            backbone:
+                name: "resnet18"
+                kwargs: backbone kwargs, default {}
+            loss_fn: 
+                name: "ce" # choose from [ce, focal, label_smoothing_ce, soft_target_ce]
+                kwargs: default {}
             data:
-                num_classes (int): number of classes in the dataset.
-            max_epochs (int): total number of epochs.
-
+                dataset: isic2016
+                data_path: "data/pretrain/images"
+                train_label: "data/pretrain/ISIC_2016_train.csv"
+                val_label: "data/pretrain/ISIC_2016_test.csv"
+                num_workers: 16
+                debug_transform: True
             optimizer:
-                name (str): name of the optimizer.
-                batch_size (int): number of samples in the batch.
-                lr (float): learning rate.
-                weight_decay (float): weight decay for optimizer.
-                kwargs (Dict): extra named arguments for the optimizer.
+                name: "sgd"
+                batch_size: 512
+                lr: 0.001
+                weight_decay: 0
             scheduler:
-                name (str): name of the scheduler.
-                min_lr (float): minimum learning rate for warmup scheduler. Defaults to 0.0.
-                warmup_start_lr (float): initial learning rate for warmup scheduler.
-                    Defaults to 0.00003.
-                warmup_epochs (float): number of warmup epochs. Defaults to 10.
-                lr_decay_steps (Sequence, optional): steps to decay the learning rate if scheduler is
-                    step. Defaults to None.
-                interval (str): interval to update the lr scheduler. Defaults to 'step'.
-
-            finetune (bool): whether or not to finetune the backbone. Defaults to False.
-
-            performance:
-                disable_channel_last (bool). Disables channel last conversion operation which
-                speeds up training considerably. Defaults to False.
-                https://pytorch.org/tutorials/intermediate/memory_format_tutorial.html#converting-existing-models
-
-        loss_func (Callable): loss function to use (for mixup, label smoothing or default). Defaults to None
-        mixup_func (Callable, optional). function to convert data and targets with mixup/cutmix.
-            Defaults to None.
-        """
+                name: None
+            checkpoint:
+                enabled: True
+                dir: "trained_models"
+                frequency: 1
+            auto_resume:
+                enabled: False
+                    """
 
         super().__init__()
 
@@ -120,29 +133,40 @@ class LinearModel(pl.LightningModule):
             # remove fc layer
             self.backbone.fc = nn.Identity()
             if cfg.data.dataset in ["cifar10", "cifar100"]:
+                # change first conv layer stride and cancel maxpooling layer
                 self.backbone.conv1 = nn.Conv2d(
                     3, 64, kernel_size=3, stride=1, padding=2, bias=False                    
                 )
                 self.backbone.maxpool = nn.Identity()
         else:
-            features_dim: int = self.backbone.num_features
+            features_dim: int = self.backbone.num_features #output feature dimension by backbone module
         self.features_dim: int = features_dim
         
-        # ckpt loadding
+        # load checkpoint from pretrain result
+        # cfg.pretrain.ckpt_key choose from ["backbone", "momentum_backbone"]
         ckpt_path = cfg.pretrain.ckpt
         state_dict = torch.load(ckpt_path, map_location="cpu")["state_dict"]
-        replace_prefix = cfg.pretrain.ckpt_key + "."
+        replace_prefix = cfg.pretrain.ckpt_key + "." # select which part of pretrain module will be loaded
         state_dict = {k.replace(replace_prefix, ""): v for k, v in state_dict.items()}
         msg = self.backbone.load_state_dict(state_dict, strict=False)
-        logging.info(f"Loaded {ckpt_path} with {msg}")
+        del state_dict
+        print(f"load ckpt from{ckpt_path}")
         
         # classifier
+        self.num_classes = cfg.data.num_classes
         self.classifier = nn.Linear(features_dim, cfg.data.num_classes)  # type: ignore
+        
+        # knn on top of backbone output
+        self.knn_eval: bool = cfg.knn_eval.enabled
+        self.knn_k: int = cfg.knn_eval.k
+        if self.knn_eval:
+            self.knn = WeightedKNNClassifier(k=self.knn_k, distance_fx=cfg.knn_eval.distance_func)
+        
+        # loss and metrics
         self.loss_func: nn.Module = self._LOSSES[cfg.loss_fn.name](**cfg.loss_fn.kwargs)
         self.metric_func: Callable = accuracy_at_k
-        # BUG metirc_args
-        self.metric_args = {"top_k": (1, min(1, min(5, cfg.data.num_classes)))}
-        self.metric_keys = [f"acc{k}" for k in set(self.metric_args["top_k"])]
+        # online evaluation metrics
+        self.metric_args = {"top_k": (1, max(1, min(5, cfg.data.num_classes)))}
 
         # mixup/cutmix function
         mixup_func: Union[Mixup, None] = None
@@ -171,7 +195,6 @@ class LinearModel(pl.LightningModule):
         self.weight_decay: float = cfg.optimizer.weight_decay
         self.extra_optimizer_kwargs: Dict[str, Any] = cfg.optimizer.kwargs
         self.exclude_bias_n_norm_wd: bool = cfg.optimizer.exclude_bias_n_norm_wd
-        self.layer_decay: float = cfg.optimizer.layer_decay
 
         # scheduler related
         self.scheduler: str = cfg.scheduler.name
@@ -180,16 +203,14 @@ class LinearModel(pl.LightningModule):
         self.warmup_start_lr: float = cfg.scheduler.warmup_start_lr * self.accumulate_grad_batches
         self.warmup_epochs: int = cfg.scheduler.warmup_epochs
         self.scheduler_interval: str = cfg.scheduler.interval
-        assert self.scheduler_interval in ["step", "epoch"]
         if self.scheduler_interval == "step":
             logging.warn(
                 f"Using scheduler_interval={self.scheduler_interval} might generate "
                 "issues when resuming a checkpoint."
             )
 
-        # if finetuning the backbone
+        # set finetune
         self.finetune: bool = cfg.finetune
-        
         if not self.finetune:
             self.backbone.eval()
             for param in self.backbone.parameters():
@@ -211,10 +232,21 @@ class LinearModel(pl.LightningModule):
         # check eval state
         assert not OmegaConf.is_missing(cfg, "finetune")
         
+        # default parameters for knn eval
+        cfg.knn_eval = omegaconf_select(cfg, "knn_eval", {})
+        cfg.knn_eval.enabled = omegaconf_select(cfg, "knn_eval.enabled", False)
+        cfg.knn_eval.k = omegaconf_select(cfg, "knn_eval.k", 20)
+        cfg.knn_eval.distance_func = omegaconf_select(cfg, "knn_eval.distance_func", "cosine")
+        
+        # assert not use knn_eval when finetune
+        assert not (cfg.finetune and cfg.knn_eval.enabled)
+        
         # check pretrain configs
+        assert not OmegaConf.is_missing(cfg, "pretrain")
         assert not OmegaConf.is_missing(cfg, "pretrain.method")
         assert not OmegaConf.is_missing(cfg, "pretrain.ckpt")
         cfg.pretrain.ckpt_key = omegaconf_select(cfg, "pretrain.ckpt_key", "backbone")
+        assert cfg.pretrain.ckpt_key in ["backbone", "momentum_backbone"]
         assert cfg.pretrain.ckpt.endswith(".ckpt") \
             or cfg.pretrain.ckpt.endswith(".pth") \
             or cfg.pretrain.ckpt.endswith(".pt")
@@ -238,7 +270,6 @@ class LinearModel(pl.LightningModule):
         assert not OmegaConf.is_missing(cfg, "optimizer.lr")
         assert not OmegaConf.is_missing(cfg, "optimizer.batch_size")
         assert not OmegaConf.is_missing(cfg, "optimizer.weight_decay")
-        cfg.optimizer.layer_decay = omegaconf_select(cfg, "optimizer.layer_decay", 0.)
         scale_factor = cfg.optimizer.batch_size * len(cfg.devices) * cfg.num_nodes / 256
         cfg.optimizer.lr = cfg.optimizer.lr * scale_factor
         # adjust lr according to batch size
@@ -274,6 +305,7 @@ class LinearModel(pl.LightningModule):
         cfg.scheduler.warmup_start_lr = omegaconf_select(cfg, "scheduler.warmup_start_lr", 3e-5)
         cfg.scheduler.warmup_epochs = omegaconf_select(cfg, "scheduler.warmup_epochs", 0)
         cfg.scheduler.interval = omegaconf_select(cfg, "scheduler.interval", "epoch")
+        assert cfg.scheduler.interval in ["step", "epoch"]
 
         return cfg
 
@@ -287,25 +319,14 @@ class LinearModel(pl.LightningModule):
 
         learnable_params = [{
             "name": "classifier",
-            "params": self.classifier.parameters()
+            "params": self.classifier.parameters(),
+            "weight_decay": 0
         }]
         if self.finetune:
-            if self.layer_decay > 0:
-                msg = "Method should implement no_weight_decay() that returns a set of parameter names to ignore from weight decay"
-                assert hasattr(self.backbone, "no_weight_decay"), msg
-
-                extra_learnable_params = param_groups_layer_decay(
-                    self.backbone,
-                    self.weight_decay,
-                    no_weight_decay_list=self.backbone.no_weight_decay(),
-                    layer_decay=self.layer_decay,
-                )
-                learnable_params += extra_learnable_params 
-            else:
-                learnable_params += [{
-                    "name": "backbone",
-                    "params": self.backbone.parameters()
-                }]
+            learnable_params += [{
+                "name": "backbone",
+                "params": self.backbone.parameters()
+            }]
 
         # exclude bias and norm from weight decay
         if self.exclude_bias_n_norm_wd:
@@ -377,45 +398,6 @@ class LinearModel(pl.LightningModule):
         return {"logits": logits, "feats": feats}
 
 
-    def _shared_step(
-        self, batch: List[Any], batch_idx: int
-    ) -> Dict:
-        """Performs operations that are shared between the training nd validation steps.
-
-        Args:
-            batch (Tuple): a batch of images in the tensor format.
-            batch_idx (int): the index of the batch.
-
-        Returns:
-            Tuple[int, torch.Tensor, torch.Tensor, torch.Tensor]:
-                batch size, loss, accuracy @1 and accuracy @5.
-        """
-        _, X, targets = batch
-        
-        outs = {"batch_size": X.size(0)} 
-        
-        if self.training:
-            if self.mixup_func is not None:
-                # targets change to soft target
-                X, targets = self.mixup_func(X, targets)
-            outs.update(self(X))
-            logits = outs["logits"]
-            loss = self.loss_func(logits, targets)
-            outs.update({"loss": loss})
-            if self.mixup_func is None:
-                metrics = self.metric_func(logits, targets, **self.metric_args)
-                outs.update({**metrics})
-        else:
-            outs.update(self(X))
-            logits = outs["logits"]
-            loss = self.loss_func(logits, targets)
-            outs.update({"loss": loss})
-            metrics = self.metric_func(logits, targets, **self.metric_args)
-            outs.update(metrics)
-
-        return outs
-
-
     def training_step(self, batch: List[Any], batch_idx: int) -> torch.Tensor:
         """Performs the training step for the linear eval.
 
@@ -426,23 +408,31 @@ class LinearModel(pl.LightningModule):
         Returns:
             torch.Tensor: cross-entropy loss between the predictions and the ground truth.
         """
+        _, X, targets = batch
         
-        out = self._shared_step(batch, batch_idx)
+        if self.mixup_func is not None:
+                # targets change to soft target
+            X, targets = self.mixup_func(X, targets)
         
-        log = {"train_loss": out["loss"]}
+        out = self(X)
+        loss = self.loss_func(out["logits"], targets)
+        log = {"train_loss": loss}
         if self.mixup_func is None:
-            for key in self.metric_keys:
-                log.update({"train_" + key: out.pop(key, None)})
-            
-        # debug
-        with torch.no_grad():  
-            logits = out["logits"]
-            probs = F.softmax(logits, dim=1)
-            log.update({"train_prob": torch.mean(probs[:, 1])})
-
-        self.log_dict(log, on_epoch=True, sync_dist=True)
+            # get metrics on current batch
+            metrics = self.metric_func(out["logits"], targets, **self.metric_args)
+            # modify metrics keys
+            log.update({"train_" + key : metrics[key] for key in metrics.keys()})
         
-        return out["loss"]
+        # log 
+        self.log_dict(log, on_epoch=True, sync_dist=True)
+
+        if self.knn_eval and not self.finetune:
+            self.knn.update(
+                train_features=out["feats"].detach(),
+                train_targets=targets.detach(),
+            )
+        
+        return loss
 
 
     def validation_step(self, batch: List[Any], batch_idx: int) -> Dict[str, Any]:
@@ -457,22 +447,33 @@ class LinearModel(pl.LightningModule):
                 dict with the batch_size (used for averaging),
                 the classification loss and accuracies.
         """
-        out = self._shared_step(batch, batch_idx)
+        _, X, targets = batch
         
-        log = {
-            "batch_size": out["batch_size"],
-            "val_loss": out["loss"]
+        out = self(X) # keys = [feats, logits]
+  
+        if self.knn_eval and not self.trainer.sanity_checking:
+            self.knn.update(test_features=out.pop("feats").detach(), test_targets=targets.detach()) # keys = [logits]
+        
+        val_loss = self.loss_func(out["logits"], targets)
+        
+        # get metrics on batch
+        metrics = {
+            "loss": val_loss,
+            "batch_size" : X.size(0)
         }
-
-        for key in self.metric_keys:
-            log.update({"val_" + key: out.pop(key, None)})
-            
+        metrics.update(self.metric_func(out["logits"], targets, **self.metric_args))
+        # modify keys
+        log = {"val_" + key : metrics[key] for key in metrics.keys() if key != "batch_size"}
+        # log  
         self.log_dict(log, on_epoch=True, sync_dist=True)
         
-        return log
+        # update preds, targets, metrics to out
+        out.update({"targets": targets, "metrics": metrics}) # keys = [logits, targets, metrics]
+        
+        return out
 
 
-    def validation_epoch_end(self, outs: List[Dict[str, Any]]):
+    def validation_epoch_end(self, outputs: List[Dict[str, Any]]):
         """Averages the losses and accuracies of all the validation batches.
         This is needed because the last batch can be smaller than the others,
         slightly skewing the metrics.
@@ -480,19 +481,119 @@ class LinearModel(pl.LightningModule):
         Args:
             outs (List[Dict[str, Any]]): list of outputs of the validation step.
         """
-        val_loss = weighted_mean(outs, "val_loss", "batch_size")
-        log = {"val_loss": val_loss}
-        for key in self.metric_keys:
-            log.update({f"val_{key}": weighted_mean(outs, f"val_{key}", "batch_size")})
-
-        self.log_dict(log, sync_dist=True)
-
-
-    def predict_step(self, batch: List[Any], batch_idx: int) -> Any:
-        """Predict step for linear eval or finefune"""
+        # mean of validation metrics
+        metrics = [out["metrics"] for out in outputs]
+        log = {}
+        for key in metrics[0].keys():
+            if key == "batch_size":
+                continue
+            log.update({f"val_{key}": weighted_mean(metrics, key, "batch_size")})
         
-        fname, X, _ = batch
-        logits = self(X)["logits"]
+        if self.knn_eval and not self.trainer.sanity_checking:
+            knn_metrics = self.knn.compute()
+            log.update({f"knn_{key}": knn_metrics[key] for key in knn_metrics.keys()})
+
+        self.log_dict(log, on_epoch=True, sync_dist=True)
         
-        return (fname, F.softmax(logits, dim=1))
+        # then calculate metrics of epoch
+        all_logits = []
+        all_targets = []
+        for out in outputs:
+            all_logits.append(out["logits"])
+            all_targets.append(out["targets"])
+
+        all_logits = torch.cat(all_logits)
+        all_targets = torch.cat(all_targets).view(-1)
         
+        if self.num_classes == 2:
+            # binary classification
+            all_metrics = binary_metrics(all_logits, all_targets)
+            metrics_to_report = [
+                "acc",
+                "best_f1",
+                "best_threshold",
+                "p@bestf1",
+                "r@bestf1",
+                "ap",
+                "auc",
+            ]
+            log = {key: all_metrics[key] for key in metrics_to_report if key in all_metrics}
+            self.log_dict(log, on_epoch=True, sync_dist=True)
+            if self.trainer.current_epoch == self.max_epochs - 1:
+                # if this is the last epoch, draw PR curve and ROC curve
+                # 绘制PR曲线
+                fig_pr, ax_pr = plt.subplots(1, 1, figsize=(8, 8), dpi=200)
+                ax_pr.set_aspect('equal')
+                ax_pr.plot(*all_metrics["pr_curve"])
+                ax_pr.set_title("P-R Curve")
+                ax_pr.set_xlabel("R")
+                ax_pr.set_ylabel("P")
+                wandb.log({'PR Curve': wandb.Image(fig_pr)}, commit=False)
+
+                # 绘制ROC曲线
+                fig_roc, ax_roc = plt.subplots(1, 1, figsize=(8, 8), dpi=200)
+                ax_roc.plot(*all_metrics["roc_curve"])
+                ax_roc.set_title("ROC Curve")
+                ax_roc.set_xlabel("FPR")
+                ax_roc.set_ylabel("TPR")
+                wandb.log({'ROC Curve': wandb.Image(fig_roc)}, commit=False)
+        else:
+            all_metrics = multiclass_metrics(all_logits, all_targets)
+            metrics_to_report = [
+                "acc",
+                "f1",
+                "macro_f1",
+                "micro_f1",
+                "p",
+                "macro_p",
+                "r",
+                "macro_r"
+            ]
+        
+            log = {key: all_metrics[key] for key in metrics_to_report if key in all_metrics}
+            ap = all_metrics["ap"]
+            macro_ap = ap["macro"]
+            micro_ap = ap["micro"]
+            auc = all_metrics["auc"]
+            macro_auc = auc["macro"]
+            micro_auc = auc["micro"]
+            log.update({
+                "macro_ap": macro_ap,
+                "micro_ap": micro_ap,
+                "macro_auc": macro_auc,
+                "micro_auc": micro_auc
+            })
+            self.log_dict(log, on_epoch=True, sync_dist=True)
+            if self.trainer.current_epoch == self.max_epochs -1:
+                r, p = all_metrics["pr_curve"]
+                fpr, tpr = all_metrics["roc_curve"]
+
+                # plot PR curves
+                fig, axs = plt.subplots(1, self.num_classes + 1, figsize=(8 * (self.num_classes + 1), 8), dpi=200, sharex='col', sharey='row')
+                fig.suptitle("P-R Curves")
+                for i in range(self.num_classes + 1):
+                    axs[i].set_aspect('equal')
+                    if i == self.num_classes:
+                        axs[i].plot(r["micro"], p["micro"])
+                        axs[i].set_title("micro")
+                    else:
+                        axs[i].plot(r[f"class{i}"], p[f"class{i}"])
+                        axs[i].set_title(f"class{i}")
+                    axs[i].set_xlabel("R")
+                    axs[i].set_ylabel("P")
+                wandb.log({"P-R": wandb.Image(fig)}, commit=False)
+
+                # plot ROC curves
+                fig, axs = plt.subplots(1, self.num_classes + 1, figsize=(8 * (self.num_classes + 1), 8), dpi=200, sharex='col', sharey='row')
+                fig.suptitle("ROC Curves")
+                for i in range(self.num_classes + 1):
+                    axs[i].set_aspect('equal')
+                    if i == self.num_classes:
+                        axs[i].plot(fpr["micro"], tpr["micro"])
+                        axs[i].set_title("micro")
+                    else:
+                        axs[i].plot(fpr[f"class{i}"], tpr[f"class{i}"])
+                        axs[i].set_title(f"class{i}")
+                    axs[i].set_xlabel("FPR")
+                    axs[i].set_ylabel("TPR")
+                wandb.log({"ROC": wandb.Image(fig)}, commit=False)

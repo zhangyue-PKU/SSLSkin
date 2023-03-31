@@ -233,27 +233,25 @@ class BaseMethod(pl.LightningModule):
         self.knn_eval: bool = cfg.knn_eval.enabled
         self.knn_k: int = cfg.knn_eval.k
         if self.knn_eval:
-            self.knn = WeightedKNNClassifier(k=self.knn_k, distance_fx=cfg.knn.distance_func)
+            self.knn = WeightedKNNClassifier(k=self.knn_k, distance_fx=cfg.knn_eval.distance_func)
             
         # online classification eval
         self.linear_eval = cfg.linear_eval
         if cfg.linear_eval:
             self.num_classes: int = cfg.data.num_classes
-            assert cfg.data.num_classes >= 2
+            assert cfg.data.num_classes >= 2, "num_class must over 2"
             self.classifier: nn.Module = nn.Linear(self.features_dim, self.num_classes)
             self.classifier_lr: float = cfg.optimizer.classifier_lr * self.accumulate_grad_batches
             # classifier metrics
             self.loss_fn = F.cross_entropy
             self.loss_args = {"ignore_index": -1}
             self.metric_fn = accuracy_at_k
-            self.metric_args = {"top_k": (1, min(5, self.num_classes))}
-            self.metric_keys = [f"acc{k}" for k in set(self.metric_args["top_k"])]
+            self.metric_args = {"top_k": (1, max(1, min(5, cfg.data.num_classes)))}
             
         # get backbone module from _BACKBONES
         self.base_model: Callable = self._BACKBONES[cfg.backbone.name]
         self.backbone_name: str = cfg.backbone.name
         self.backbone_kwargs: Dict[str, Any] = cfg.backbone.kwargs
-        
         # initialize backbone
         kwargs = self.backbone_kwargs.copy()
         self.backbone: nn.Module = self.base_model(cfg.method, **kwargs)
@@ -298,7 +296,7 @@ class BaseMethod(pl.LightningModule):
         cfg.knn_eval = omegaconf_select(cfg, "knn_eval", {})
         cfg.knn_eval.enabled = omegaconf_select(cfg, "knn_eval.enabled", False)
         cfg.knn_eval.k = omegaconf_select(cfg, "knn_eval.k", 20)
-        cfg.knn_eval.distance_func = omegaconf_select(cfg, "knn_eval.distance_func", "euclidean")
+        cfg.knn_eval.distance_func = omegaconf_select(cfg, "knn_eval.distance_func", "cosine")
 
         # online evaluation
         cfg.linear_eval = omegaconf_select(cfg, "linear_eval", False)
@@ -353,7 +351,10 @@ class BaseMethod(pl.LightningModule):
             List[Dict[str, Any]]:
                 list of dicts containing learnable parameters and possible settings.
         """
-        learnable_parameters = [{"name": "backbone", "params": self.backbone.parameters()}]
+        learnable_parameters = [{
+            "name": "backbone", 
+            "params": self.backbone.parameters()
+        }]
         if self.linear_eval:
             learnable_parameters += [{
                 "name": "classifier",
@@ -466,9 +467,9 @@ class BaseMethod(pl.LightningModule):
             logits = self.classifier(feats.detach())
             loss = self.loss_fn(logits, targets, **self.loss_args)
             metrics = self.metric_fn(logits, targets, **self.metric_args)
-            out.update({"loss": loss, "logits": logits, **metrics})
+            out.update({"loss": loss, "logits": logits, "metrics": metrics}) # feats, loss, logits, metrics keys and other forward
         else:
-            out.update({"loss": 0.})
+            out.update({"loss": 0.}) # dummy loss
             
         return out
 
@@ -505,18 +506,20 @@ class BaseMethod(pl.LightningModule):
         if self.linear_eval:
             # log metrics and remove them from outs
             loss = sum(outs["loss"]) / self.num_large_crops
-            metrics = {"train" + "_class_loss": loss}
-            for key in self.metric_keys:
-                metrics.update({("train" + key): sum(outs.pop(key, [])) / self.num_large_crops})
-            self.log_dict(metrics, on_epoch=True, sync_dist=True)
+            log = {"train" + "_class_loss": loss}
+            metrics = outs.pop("metrics", {}) # metrics type List[Dict]
+            log.update({f"train_{k}": sum(m[k] for m in metrics) / self.num_large_crops \
+                                                    for k in metrics[0].keys()})
+            self.log_dict(log, on_epoch=True, sync_dist=True)
+            del metrics
 
         if self.knn_eval:
-            self.knn(
+            self.knn.update(
                 train_features=torch.cat(outs["feats"][: self.num_large_crops]).detach(),
                 train_targets=targets.repeat(self.num_large_crops).detach(),
             )
 
-        return outs
+        return outs # loss, feats, (logits), (p, z form subclass forward) 
     
 
     def validation_step(
@@ -533,23 +536,27 @@ class BaseMethod(pl.LightningModule):
             Dict[str, Any]: dict with the batch_size (used for averaging), the classification loss
                 and accuracies.
         """
-
+        
+        assert self.linear_eval is True
+        
         _, X, targets = batch
         batch_size = targets.size(0)
         
-        out = self._shared_step(X, targets)
+        out = self._shared_step(X, targets) # loss, feats, logits, metrics
 
         if self.knn_eval and not self.trainer.sanity_checking:
-            self.knn(test_features=out.pop("feats").detach(), test_targets=targets.detach())
+            self.knn.update(test_features=out.pop("feats").detach(), test_targets=targets.detach())
 
-        metrics = None
-        if self.linear_eval:
-            metrics = {
-                "batch_size": batch_size,
-                "val_loss": out["loss"],
-            }
-            for key in self.metric_keys:
-                metrics.update({f"val_{key}": out[key]})
+        metrics = {
+            "loss": out["loss"],
+            "batch_size": batch_size,
+        }
+        metrics.update(out["metrics"])
+        # modify keys
+        log = {f"val_{key}": metrics[key] for key in metrics.keys() if key != "batch_size"}
+        # log
+        self.log_dict(log, on_epoch=True, sync_dist=True)
+        
         
         return metrics
 
@@ -562,18 +569,19 @@ class BaseMethod(pl.LightningModule):
         Args:
             outs (List[Dict[str, Any]]): list of outputs of the validation step.
         """
+        log = {}
+        for key in outs[0].keys():
+            if key == "batch_size":
+                continue
+            weighted_mean_value = weighted_mean(outs, key, "batch_size")
+            log.update({f"val_{key}": weighted_mean_value})
+                
+        if self.knn_eval and not self.trainer.running_sanity_check:
+            knn_metrics = self.knn.compute()
+            for key in knn_metrics.keys():
+                log.update({f"val_knn_{key}": knn_metrics[key]})
 
-        val_loss = weighted_mean(outs, "val_loss", "batch_size")
-        log = {"val_loss": val_loss}
-        for key in self.metric_keys:
-            log.update({f"val_{key}": weighted_mean(outs, f"val_{key}", "batch_size")})
-
-        #BUG: disable_knn_eval not set in base method
-        if not self.disable_knn_eval and not self.trainer.running_sanity_check:
-            val_knn_acc1, val_knn_acc5 = self.knn.compute()
-            log.update({"val_knn_acc1": val_knn_acc1, "val_knn_acc5": val_knn_acc5})
-
-        self.log_dict(log, sync_dist=True)
+        self.log_dict(log, on_epoch=True, sync_dist=True)
 
 
 
@@ -599,9 +607,6 @@ class BaseMomentumMethod(BaseMethod):
 
         # initialize momentum backbone
         kwargs = self.backbone_kwargs.copy()
-        
-        # cfg is 
-        cfg = self.cfg
 
         method: str = cfg.method
         base_tau_momentum: float = cfg.momentum.base_tau
@@ -717,8 +722,8 @@ class BaseMomentumMethod(BaseMethod):
         if self.momentum_linear_eval:
             logits = self.momentum_classifier(feats.detach())
             loss = self.loss_fn(logits, targets, **self.loss_args)
-            results = self.metric_fn(logits, targets, **self.metric_args)
-            out.update({"logits": logits, "loss": loss, **results})
+            metrics = self.metric_fn(logits, targets, **self.metric_args)
+            out.update({"logits": logits, "loss": loss, "metrics": metrics})
         else:
             out.update({"loss": 0.})
 
@@ -752,15 +757,16 @@ class BaseMomentumMethod(BaseMethod):
 
         if self.momentum_linear_eval:
             loss = sum(momentum_outs["loss"]) / self.num_large_crops
-            metrics = {"momentum_train" + "_class_loss": loss}
-            for key in self.metric_keys:
-                metrics.update({("momentum_train" + key): sum(momentum_outs.pop(key, [])) / self.num_large_crops})
-            self.log_dict(metrics, on_epoch=True, sync_dist=True)
-
+            log = {"momentum_train" + "_class_loss": loss}
+            metrics = momentum_outs.pop("metrics", {}) # metrics type List[Dict]
+            log.update({f"momentum_train_{k}": sum(m[k] for m in metrics) / self.num_large_crops \
+                                                    for k in metrics[0].keys()})
+            self.log_dict(log, on_epoch=True, sync_dist=True)
+            del metrics
         # adds the momentum classifier loss together with the general loss
         online_outs.update(
             {("momentum_" + k) : momentum_outs[k] for k in momentum_outs.keys()}
-        )
+        ) # add momentum_loss, momentum_feats, (momentum_logits) and (momentum_{p,z})
 
         return online_outs
 
@@ -805,10 +811,9 @@ class BaseMomentumMethod(BaseMethod):
                 for averaging), the classification loss and accuracies for both the online and the
                 momentum classifiers.
         """
-
         parent_metrics = super().validation_step(batch, batch_idx)
 
-        X, targets = batch
+        _, X, targets = batch
         batch_size = targets.size(0)
 
         out = self._shared_step_momentum(X, targets)
@@ -816,12 +821,13 @@ class BaseMomentumMethod(BaseMethod):
         metrics = None
         if self.momentum_linear_eval:
             metrics = {
+                "loss": out["loss"],
                 "batch_size": batch_size,
-                "momentum_val_loss": out["loss"]
             }
-            for key in self.metric_keys:
-                metrics.update({f"momentum_val_{key}": out[key]})
-
+            metrics.update(out["metrics"])
+            log = {f"momentum_val_{key}": out[key] for key in metrics.keys() if key != "batch_size"}
+            self.log_dict(log, on_epoch=True, sync_dist=True)
+            
         return parent_metrics, metrics
 
 
@@ -839,9 +845,11 @@ class BaseMomentumMethod(BaseMethod):
 
         if self.momentum_linear_eval:
             momentum_outs = [out[1] for out in outs]
-            val_loss = weighted_mean(momentum_outs, "momentum_val_loss", "batch_size")
-            log = {"val_loss": val_loss}
-            for key in self.metric_keys:
-                stats = weighted_mean(momentum_outs, f"momentum_val_{key}", "batch_size")
+            log = {}
+            for key in momentum_outs[0].keys():
+                if key == "batch_size":
+                    continue
+                stats = weighted_mean(momentum_outs, key, "batch_size")
                 log.update({f"momentum_val_{key}": stats})
+            
             self.log_dict(log, sync_dist=True)

@@ -179,6 +179,24 @@ def multiclass_metrics(outputs: torch.Tensor, targets: torch.Tensor) -> Dict:
         }
         
 
+
+def knn_metrics(predictions: torch.Tensor, targets: torch.Tensor) -> Dict:
+    predictions = predictions.cpu()
+    targets = targets.cpu()
+    with torch.no_grad():
+        accuracy = accuracy_score(targets, predictions)
+        precision = precision_score(targets, predictions, average='weighted')
+        recall = recall_score(targets, predictions, average='weighted')
+        f1 = f1_score(targets, predictions, average='weighted')
+        
+        return {
+            "acc": accuracy,
+            "p": precision,
+            "r": recall,
+            "f1": f1
+        }
+    
+
 def multiclass_accuracy(outputs: torch.Tensor, targets: torch.Tensor) -> Dict:
     with torch.no_grad():
         # targets = targets["exists"]

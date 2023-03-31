@@ -11,26 +11,32 @@ hydra:
   run:
     dir: .
 
-name: "mocov2plus-isicarchive-linear"
+name: "mocov2plus-linear--rotate-isic2016"
 finetune: False # perform finetune or linear-probbing
-predict: True # whether call trainer.predict()
+knn_eval:
+  enabled: True
+  k: 20
+  distance_func: "cosine"
 pretrain:
   method: "mocov2plus"
-  ckpt: "trained_models/mocov2plus/bp5i1erd/mocov2plus-bp5i1erd-ep=99.ckpt" # pretrain ckpt
-  # ckpt: "trained_models/mocov2plus/sbyhf7s3/mocov2plus-sbyhf7s3-ep=64.ckpt" # pretrain ckpt
+  #ckpt: "trained_models/mocov2plus/bp5i1erd/mocov2plus-bp5i1erd-ep=99.ckpt" # pretrain ckpt
+  # ckpt: "trained_models/mocov2plus/rwmvyznl/mocov2plus-symmetric-rwmvyznl-ep=99.ckpt" # symmetric
+  # ckpt: "trained_models/mocov2plus/kn91yno6/mocov2plus--graycale-kn91yno6-ep=99.ckpt" # -grayscale
+  # ckpt: "trained_models/mocov2plus/ic10r2ww/mocov2plus--guassian_blur.yaml-ic10r2ww-ep=99.ckpt" # -guassian
+  # ckpt: "trained_models/mocov2plus/egfrdeb9/mocov2plus--vetical-egfrdeb9-ep=99.ckpt" # -vertical
+  ckpt: "trained_models/mocov2plus/s1g7cdmh/mocov2plus--rotate-s1g7cdmh-ep=99.ckpt" # -rotate
   ckpt_key: "momentum_backbone" #ckpt key in ["backbone", "momentum_backbone"]
 backbone:
   name: "resnet18"
 loss_fn: 
-  name: "focal" # choose from [ce, focal, label_smoothing_ce, soft_target_ce]
+  name: "ce" # choose from [ce, focal, label_smoothing_ce, soft_target_ce]
 data:
-  dataset: isic2020
-  train_path: "./data/train/images"
-  val_path: "./data/train/images"
-  pred_path: "./data/test/images"
-  train_label_file: "./data/train/train.csv"
-  val_label_file: "./data/train/val.csv"
-  num_workers: 8
+  dataset: isic2016
+  data_path: "data/pretrain/images"
+  train_label: "data/pretrain/ISIC_2016_train.csv"
+  val_label: "data/pretrain/ISIC_2016_test.csv"
+  num_workers: 16
+  debug_transform: True
 optimizer:
   name: "sgd"
   batch_size: 512
@@ -46,10 +52,10 @@ auto_resume:
   enabled: False
 
 # pytorch-lightning trainer params
-max_epochs: 2
+max_epochs: 70
 devices: [0]
 sync_batchnorm: True
 accelerator: "gpu"
 strategy: "ddp"
 precision: 16
-log_every_n_steps: 25
+log_every_n_steps: 2

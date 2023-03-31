@@ -13,7 +13,6 @@ hydra:
 
 name: "mocov2plus-isicarchive-finetune"
 finetune: True # perform finetune or linear-probbing
-predict: True # whether call trainer.predict()
 pretrain:
   method: "mocov2plus"
   ckpt: "trained_models/mocov2plus/bp5i1erd/mocov2plus-bp5i1erd-ep=99.ckpt" # pretrain ckpt
@@ -22,20 +21,19 @@ pretrain:
 backbone:
   name: "resnet18"
 loss_fn: 
-  name: "focal" # choose from [ce, focal, label_smoothing_ce, soft_target_ce]
+  name: "ce" # choose from [ce, focal, label_smoothing_ce, soft_target_ce]
 data:
-  dataset: isic2020
-  train_path: "./data/train/images"
-  val_path: "./data/train/images"
-  pred_path: "./data/test/images"
-  train_label_file: "./data/train/train.csv"
-  val_label_file: "./data/train/val.csv"
+  dataset: isic2016
+  data_path: "data/pretrain/images"
+  train_label: "data/pretrain/ISIC_2016_train.csv"
+  val_label: "data/pretrain/ISIC_2016_test.csv"
   num_workers: 8
+  debug_transform: True
 optimizer:
   name: "sgd"
   batch_size: 512
   lr: 0.0001
-  weight_decay: 5e-4
+  weight_decay: 5e-5
 scheduler:
   name: "warmup_cosine"
 checkpoint:
@@ -46,10 +44,10 @@ auto_resume:
   enabled: False
 
 # pytorch-lightning trainer params
-max_epochs: 50
+max_epochs: 25
 devices: [0]
 sync_batchnorm: True
 accelerator: "gpu"
 strategy: "ddp"
 precision: 16
-log_every_n_steps: 25
+log_every_n_steps: 2

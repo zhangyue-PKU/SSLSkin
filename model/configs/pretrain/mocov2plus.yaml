@@ -1,6 +1,6 @@
 defaults:
   - _self_
-  - augmentations: symmetric.yaml
+  - augmentations: -color_jitter.yaml
   - wandb: private.yaml
   - override hydra/hydra_logging: disabled
   - override hydra/job_logging: disabled
@@ -11,7 +11,7 @@ hydra:
   run:
     dir: .
 
-name: "mocov2plus-symmetric"
+name: "mocov2plus--color_jitter"
 method: "mocov2plus"
 backbone:
   name: "resnet18"
@@ -45,7 +45,7 @@ auto_resume:
 
 # overwrite PL stuff
 max_epochs: 100
-devices: [1]
+devices: [0]
 sync_batchnorm: True
 accelerator: "gpu"
 strategy: "ddp"

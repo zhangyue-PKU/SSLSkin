@@ -30,10 +30,15 @@ def add_and_assert_dataset_cfg(cfg: omegaconf.DictConfig) -> omegaconf.DictConfi
     assert not OmegaConf.is_missing(cfg, "data.train_path")
 
     # if validation path is not available, assume that we want to skip eval
+    cfg.data.train_label = omegaconf_select(cfg, "data.train_label", None) # train label is used to train classifier
     cfg.data.val_path = omegaconf_select(cfg, "data.val_path", None)
+    cfg.data.val_label = omegaconf_select(cfg, "data.val_label", None)
+    
     num_classes = _N_CLASSES_PER_DATASET.get(cfg.data.dataset, -1)
     cfg.data.num_classes = omegaconf_select(cfg, "data.num_classes", num_classes)
+    
     cfg.data.num_workers = omegaconf_select(cfg, "data.num_workers", 8)
+    
     cfg.data.debug_augmentations = omegaconf_select(cfg, "data.debug_augmentations", False)
 
     return cfg

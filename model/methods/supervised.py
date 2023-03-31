@@ -74,40 +74,39 @@ class SupervisedModel(pl.LightningModule):
         self,
         cfg: omegaconf.DictConfig,
     ):
-        """Implements linear and finetune evaluation.
+        """Implements Supervised Learning.
 
         .. note:: Cfg defaults are set in init by calling `cfg = add_and_assert_specific_cfg(cfg)`
 
         backbone (nn.Module): backbone architecture for feature extraction.
         Cfg basic structure:
+            name: "Your running name"
+            backbone:
+                name: "resnet18"
+                kwargs: backbone kwargs, default {}
+            loss_fn: 
+                name: "ce" # choose from [ce, focal, label_smoothing_ce, soft_target_ce]
+                kwargs: default {}
             data:
-                num_classes (int): number of classes in the dataset.
-            max_epochs (int): total number of epochs.
-
+                dataset: isic2016
+                data_path: "data/pretrain/images"
+                train_label: "data/pretrain/ISIC_2016_train.csv"
+                val_label: "data/pretrain/ISIC_2016_test.csv"
+                num_workers: 16
+                debug_transform: True
             optimizer:
-                name (str): name of the optimizer.
-                batch_size (int): number of samples in the batch.
-                lr (float): learning rate.
-                weight_decay (float): weight decay for optimizer.
-                kwargs (Dict): extra named arguments for the optimizer.
+                name: "sgd"
+                batch_size: 512
+                lr: 0.001
+                weight_decay: 0
             scheduler:
-                name (str): name of the scheduler.
-                min_lr (float): minimum learning rate for warmup scheduler. Defaults to 0.0.
-                warmup_start_lr (float): initial learning rate for warmup scheduler.
-                    Defaults to 0.00003.
-                warmup_epochs (float): number of warmup epochs. Defaults to 10.
-                lr_decay_steps (Sequence, optional): steps to decay the learning rate if scheduler is
-                    step. Defaults to None.
-                interval (str): interval to update the lr scheduler. Defaults to 'step'.
-
-            performance:
-                disable_channel_last (bool). Disables channel last conversion operation which
-                speeds up training considerably. Defaults to False.
-                https://pytorch.org/tutorials/intermediate/memory_format_tutorial.html#converting-existing-models
-
-        loss_func (Callable): loss function to use (for mixup, label smoothing or default). Defaults to None
-        mixup_func (Callable, optional). function to convert data and targets with mixup/cutmix.
-            Defaults to None.
+                name: None
+            checkpoint:
+                enabled: True
+                dir: "trained_models"
+                frequency: 1
+            auto_resume:
+                enabled: False
         """
 
         super().__init__()
@@ -125,19 +124,20 @@ class SupervisedModel(pl.LightningModule):
             # remove fc layer
             self.backbone.fc = nn.Identity()
             if cfg.data.dataset in ["cifar10", "cifar100"]:
+                # change first conv layer stride and cancel maxpooling layer
                 self.backbone.conv1 = nn.Conv2d(
                     3, 64, kernel_size=3, stride=1, padding=2, bias=False                    
                 )
                 self.backbone.maxpool = nn.Identity()
         else:
-            features_dim: int = self.backbone.num_features
+            features_dim: int = self.backbone.num_features #output feature dimension by backbone module
         self.features_dim: int = features_dim
 
         # classifier
         self.num_classes = cfg.data.num_classes
         self.classifier = nn.Linear(features_dim, cfg.data.num_classes)  # type: ignore
         
-        # loss and metircs
+        # loss and metrics
         self.loss_func: nn.Module = self._LOSSES[cfg.loss_fn.name](**cfg.loss_fn.kwargs)
         self.metric_func: Callable = accuracy_at_k
         # online evaluation metrics 
@@ -524,7 +524,4 @@ class SupervisedModel(pl.LightningModule):
                         axs[i].set_title(f"class{i}")
                     axs[i].set_xlabel("FPR")
                     axs[i].set_ylabel("TPR")
-                wandb.log({"ROC": wandb.Image(fig)}, commit=False)
-
-                
-                
+                wandb.log({"ROC": wandb.Image(fig)}, commit=False)          

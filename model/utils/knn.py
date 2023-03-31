@@ -22,6 +22,8 @@ from typing import Tuple
 import torch
 import torch.nn.functional as F
 from torchmetrics.metric import Metric
+from model.utils.metrics import knn_metrics
+
 
 
 class WeightedKNNClassifier(Metric):
@@ -115,14 +117,13 @@ class WeightedKNNClassifier(Metric):
         num_classes = torch.unique(test_targets).numel()
         num_train_images = train_targets.size(0)
         num_test_images = test_targets.size(0)
-        num_train_images = train_targets.size(0)
         chunk_size = min(
             max(1, self.max_distance_matrix_size // num_train_images),
             num_test_images,
         )
         k = min(self.k, num_train_images)
 
-        top1, top5, total = 0.0, 0.0, 0
+        all_predictions, all_targets = [], []
         retrieval_one_hot = torch.zeros(k, num_classes).to(train_features.device)
         for idx in range(0, num_test_images, chunk_size):
             # get the features for test images
@@ -156,18 +157,14 @@ class WeightedKNNClassifier(Metric):
                 1,
             )
             _, predictions = probs.sort(1, True)
-
-            # find the predictions that match the target
-            correct = predictions.eq(targets.data.view(-1, 1))
-            top1 = top1 + correct.narrow(1, 0, 1).sum().item()
-            top5 = (
-                top5 + correct.narrow(1, 0, min(5, k, correct.size(-1))).sum().item()
-            )  # top5 does not make sense if k < 5
-            total += targets.size(0)
-
-        top1 = top1 * 100.0 / total
-        top5 = top5 * 100.0 / total
-
+            all_predictions.append(predictions[:, 0].cpu())
+            all_targets.append(targets)
+            
+        all_predictions = torch.cat(all_predictions).view(-1)
+        all_targets = torch.cat(all_targets).view(-1)
+            
+        metrics = knn_metrics(all_predictions, all_targets)
+        
         self.reset()
 
-        return top1, top5
+        return metrics

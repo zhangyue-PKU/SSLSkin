@@ -12,11 +12,10 @@ from model.data.transforms import FTTransformPipeline
 
 from model.args.linear import parse_cfg
 from model.methods.linear import LinearModel
-from model.data.dataset import LightlyDataset
+from model.data.dataset import LightlyDataset, ISICDataset
 from model.utils.auto_resumer import AutoResumer
 from model.utils.checkpointer import Checkpointer
 from model.utils.misc import make_contiguous
-from model.utils.predict_writer import PredictWriter
 
 
 @hydra.main(version_base="1.2")
@@ -35,32 +34,25 @@ def main(cfg: DictConfig):
     transform = FTTransformPipeline(cfg.augmentations[0])
     val_transform = FTTransformPipeline(cfg.augmentations[1])
     
-    # Operating fuction for selected columns
-    columns = ["image_name", "benign_malignant"]
-    mapfunc = {
-        "image_name": lambda x: x + ".jpg",
-        "benign_malignant": lambda x: 1 if x == 'malignant' else 0
-    }
+    if cfg.data.debug_transform:
+        print("Debug: Training Transform:", transform)
+        print("Test Transform", val_transform)
     
+    # Build train dataset and test dataset
     # Train dataset
-    train_dataset = LightlyDataset(
-        input_dir=cfg.data.train_path,
-        transform=transform,
-        metafile=cfg.data.train_label_file,
-        columns=columns,
-        mapfunc=mapfunc
+    train_dataset = LightlyDataset.from_torch_dataset(
+        dataset=ISICDataset(root=cfg.data.data_path, 
+                            label_file=cfg.data.train_label),
+        transform=transform
     )
-
     # Val dataset
-    val_dataset = LightlyDataset(
-        input_dir=cfg.data.val_path,
-        transform=val_transform,
-        metafile=cfg.data.val_label_file,
-        columns=columns,
-        mapfunc=mapfunc
+    val_dataset = LightlyDataset.from_torch_dataset(
+        dataset=ISICDataset(root=cfg.data.data_path, 
+                            label_file=cfg.data.val_label),
+        transform=val_transform
     )
 
-
+    # Build dataloader
     train_loader = torch.utils.data.DataLoader(
         train_dataset,
         batch_size=cfg.optimizer.batch_size,
@@ -68,7 +60,6 @@ def main(cfg: DictConfig):
         num_workers=cfg.data.num_workers,
         pin_memory=True
     )
-    
     val_loader = torch.utils.data.DataLoader(
         val_dataset,
         batch_size=cfg.optimizer.batch_size,
@@ -77,20 +68,7 @@ def main(cfg: DictConfig):
         pin_memory=False
     )
     
-    if cfg.predict:
-        # Test dataset
-        pred_dataset = LightlyDataset(
-            input_dir=cfg.data.pred_path,
-            transform=val_transform
-        )
-        pred_loader = torch.utils.data.DataLoader(
-            pred_dataset,
-            batch_size=cfg.optimizer.batch_size,
-            shuffle=False,
-            num_workers=cfg.data.num_workers,
-            pin_memory=False
-        )
-    
+    # Resume ckpt
     ckpt_path, wandb_run_id = None, None
     if cfg.auto_resume.enabled and cfg.resume_from_checkpoint is None:
         auto_resumer = AutoResumer(
@@ -107,7 +85,8 @@ def main(cfg: DictConfig):
     elif cfg.resume_from_checkpoint is not None:
         ckpt_path = cfg.resume_from_checkpoint
         del cfg.resume_from_checkpoint
-    
+        
+    # Collect callbacks   
     callbacks = []
 
     if cfg.checkpoint.enabled:
@@ -137,17 +116,6 @@ def main(cfg: DictConfig):
         lr_monitor = LearningRateMonitor(logging_interval="step")
         callbacks.append(lr_monitor)
  
-    if cfg.predict:
-        predict_writer = PredictWriter(
-            write_interval="batch_and_epoch",
-            output_dir=os.path.join(cfg.checkpoint.dir, "linear"),
-            name=f"{cfg.name}.csv",
-            index=1,
-            columns=["image_name", "target"]
-        )
-        callbacks.append(predict_writer)    
-    
-
     trainer_kwargs = OmegaConf.to_container(cfg)
     # we only want to pass in valid Trainer args, the rest may be user specific
     valid_kwargs = inspect.signature(Trainer.__init__).parameters
@@ -165,10 +133,6 @@ def main(cfg: DictConfig):
     trainer = Trainer(**trainer_kwargs)
     
     trainer.fit(model, train_loader, val_loader, ckpt_path=ckpt_path)
-    
-    if cfg.predict:
-        trainer.predict(model, pred_loader)
-    
 
 if __name__ == "__main__":
     main()

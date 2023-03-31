@@ -61,7 +61,7 @@ class Solarization:
 
 
 t = [
-    transforms.RandomResizedCrop(224, scale=(0.2, 1)),    
+    #transforms.RandomResizedCrop(224, scale=(0.2, 1)),    
     transforms.RandomApply([transforms.ColorJitter(
         brightness=0.4,
         contrast=0.4,
@@ -76,19 +76,18 @@ t.append(
 t.append(
     transforms.RandomApply([Solarization()],p=0.2)
 )
-# t.append(transforms.RandomApply([Equalization()], p=0.5))
 t.append(
-    transforms.RandomHorizontalFlip()
+    transforms.RandomHorizontalFlip(p=0.5)
 )
 t.append(
-    transforms.RandomVerticalFlip()
+    transforms.RandomVerticalFlip(p=0.5)
 )
-t.append(transforms.RandomApply([transforms.RandomRotation(45)], p=0.5))
+t.append(transforms.RandomApply([transforms.RandomRotation(90)], p=0.))
 
 t = transforms.Compose(t)
 
 
 # 循环增强并保存结果
-for i in range(30):
+for i in range(10):
     transformed_img = t(img)
     transformed_img.save(f"example_transformed_{i}.jpg")

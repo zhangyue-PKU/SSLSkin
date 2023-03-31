@@ -16,7 +16,10 @@ _N_CLASSES_PER_DATASET = {
     "stl10": 10,
     "imagenet": 1000,
     "imagenet100": 100,
-    "isic2020": 2
+    "isic2016": 2,
+    "isic2017": 3,
+    "isic2018": 7,
+    "isic2019": 8,
 }
 
 
@@ -33,17 +36,19 @@ def add_and_assert_dataset_cfg(cfg: omegaconf.DictConfig) -> omegaconf.DictConfi
     """
 
     assert not OmegaConf.is_missing(cfg, "data.dataset")
-    assert not OmegaConf.is_missing(cfg, "data.train_path")
-    cfg.data.train_label_file = omegaconf_select(cfg, "data.train_label_file", None)
-    cfg.data.val_path = omegaconf_select(cfg, "data.val_path", None)
-    cfg.data.val_label_file = omegaconf_select(cfg, "data.val_label_file", None)
-    cfg.data.num_classes = omegaconf_select(cfg, "data.num_classes", \
-                                            _N_CLASSES_PER_DATASET.get(cfg.data.dataset, 2))
+    assert not OmegaConf.is_missing(cfg, "data.data_path")
+    assert not OmegaConf.is_missing(cfg, "data.train_label")
+    assert not OmegaConf.is_missing(cfg, "data.val_label")
+    
+    assert cfg.data.dataset in _N_CLASSES_PER_DATASET
+    num_classes = _N_CLASSES_PER_DATASET[cfg.data.dataset]
+    cfg.data.num_classes = omegaconf_select(cfg, "data.num_classes", num_classes)
+    assert cfg.data.num_classes >= 2
+    
     cfg.data.num_workers = omegaconf_select(cfg, "data.num_workers", 4)
     cfg.data.augmentations = omegaconf_select(cfg, "data.augmentations", [{}])
-    
-    # TODO: params remains
-    cfg.data.fraction = omegaconf_select(cfg, "data.fraction", -1)
+
+    cfg.data.debug_transform = omegaconf_select(cfg, "data.debug_transform", False)
 
     return cfg
 
