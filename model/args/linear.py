@@ -20,6 +20,7 @@ _N_CLASSES_PER_DATASET = {
     "isic2017": 3,
     "isic2018": 7,
     "isic2019": 8,
+    "isic2020": 2,
 }
 
 
