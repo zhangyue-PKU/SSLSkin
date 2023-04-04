@@ -46,6 +46,7 @@ from model.losses import SoftTargetFocalLoss, FocalLoss
 import matplotlib.pyplot as plt
 import wandb
 
+
 class LinearModel(pl.LightningModule):
          
     _OPTIMIZERS = {
@@ -126,7 +127,7 @@ class LinearModel(pl.LightningModule):
         # backbone
         self.backbone_name = cfg.backbone.name
         base_model: Callable = BaseMethod._BACKBONES[cfg.backbone.name]
-        self.backbone: nn.Module = base_model(cfg.pretrain.method, **cfg.backbone.kwargs)
+        self.backbone: nn.Module = base_model(None, **cfg.backbone.kwargs)
         # num_feature
         if self.backbone_name.startswith("resnet"):
             features_dim: int = self.backbone.inplanes
@@ -391,7 +392,7 @@ class LinearModel(pl.LightningModule):
         Returns:
             Dict[str, Any]: a dict containing features and logits.
         """
-        with torch.set_grad_enabled(self.finetune):
+        with torch.set_grad_enabled(self.finetune and self.training):
             feats = self.backbone(X)
         logits = self.classifier(feats)
     
@@ -414,7 +415,7 @@ class LinearModel(pl.LightningModule):
                 # targets change to soft target
             X, targets = self.mixup_func(X, targets)
         
-        out = self(X)
+        out = self(X) # feats, logits
         loss = self.loss_func(out["logits"], targets)
         log = {"train_loss": loss}
         if self.mixup_func is None:
