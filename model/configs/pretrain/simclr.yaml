@@ -1,6 +1,6 @@
 defaults:
   - _self_
-  - augmentations: asymmetric.yaml
+  - augmentations: symmetric.yaml
   - wandb: private.yaml
   - override hydra/hydra_logging: disabled
   - override hydra/job_logging: disabled
@@ -11,22 +11,22 @@ hydra:
   run:
     dir: .
 
-name: "simclr"
+name: "simclr-symmetric-512bs"
 method: "simclr"
 method_kwargs:
   proj_hidden_dim: 4096
-  proj_output_dim: 512
+  proj_output_dim: 256
   temperature: 0.2
 backbone:
   name: "resnet18"
 data:
   dataset: isic_archive
   train_path: ./data/pretrain/images
-  num_workers: 16
+  num_workers: 10
 optimizer:
   name: "lars"
-  batch_size: 256
-  lr: 0.2
+  batch_size: 512
+  lr: 0.25
   weight_decay: 1e-4
   kwargs:
     clip_lr: True
@@ -34,6 +34,7 @@ optimizer:
     exclude_bias_n_norm: True
 scheduler:
   name: "warmup_cosine"
+  interval: "step"
 checkpoint:
   enabled: True
   dir: "trained_models"
@@ -44,7 +45,7 @@ auto_resume:
 
 # overwrite PL stuff
 max_epochs: 100
-devices: [0]
+devices: [0, 1]
 sync_batchnorm: True
 accelerator: "gpu"
 strategy: "ddp"
