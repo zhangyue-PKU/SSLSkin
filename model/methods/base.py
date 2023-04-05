@@ -852,4 +852,4 @@ class BaseMomentumMethod(BaseMethod):
                 stats = weighted_mean(momentum_outs, key, "batch_size")
                 log.update({f"momentum_val_{key}": stats})
             
-            self.log_dict(log, sync_dist=True)
+            self.log_dict(log, on_epoch= True, sync_dist=True)

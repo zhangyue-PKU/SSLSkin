@@ -9,6 +9,7 @@ from .mocov3 import MoCoV3
 from .simsiam import SimSiam
 from .moby import MoBY
 from .simclr import SimCLR
+from .nsmoco import NSMoCo
 
 
 METHODS = {
@@ -21,7 +22,8 @@ METHODS = {
     "mocov3": MoCoV3,
     "simsam": SimSiam,
     "moby": MoBY,
-    "simclr":SimCLR
+    "simclr":SimCLR,
+    "nsmoco": NSMoCo,
 }
 
 
@@ -35,4 +37,5 @@ __all__ = [
     "SimSiam",
     "MoBY",
     "SimCLR",
+    "NSMoCo",
 ]

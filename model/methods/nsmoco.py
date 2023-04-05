@@ -1,18 +1,19 @@
+# Negative select momentum contrast model
 from typing import Any, Dict, List, Sequence, Tuple
 
 import omegaconf
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from model.losses.mocov2plus import mocov2plus_loss_func
+from model.losses.nsmoco import nsmoco_loss_func
 from model.methods.base import BaseMomentumMethod
-from model.utils.misc import gather
+from model.utils.misc import gather, omegaconf_select
 from model.utils.momentum import initialize_momentum_params
 
 
-class MoBY(BaseMomentumMethod):
+class NSMoCo(BaseMomentumMethod):
     def __init__(self, cfg: omegaconf.DictConfig):
-        """Implements MoBY.
+        """Implements NSMoCo.
 
         Extra cfg settings:
             method_kwargs:
@@ -50,7 +51,8 @@ class MoBY(BaseMomentumMethod):
             nn.ReLU(),
             nn.Linear(pred_hidden_dim, proj_output_dim),
         )
-        
+        # copy projector params to momentum_projector
+        # disable grad
         initialize_momentum_params(self.projector, self.momentum_projector)
         
         self.register_buffer("queue", torch.randn(2, proj_output_dim, self.queue_size))
@@ -60,7 +62,7 @@ class MoBY(BaseMomentumMethod):
         
     @staticmethod
     def add_and_assert_specific_cfg(cfg: omegaconf.DictConfig) -> omegaconf.DictConfig:
-        cfg = super(MoBY, MoBY).add_and_assert_specific_cfg(cfg)
+        cfg = super(NSMoCo, NSMoCo).add_and_assert_specific_cfg(cfg)
         
         assert not omegaconf.OmegaConf.is_missing(cfg, "method_kwargs.temperature")
         assert not omegaconf.OmegaConf.is_missing(cfg, "method_kwargs.queue_size")
@@ -81,10 +83,9 @@ class MoBY(BaseMomentumMethod):
                 "params": self.projector.parameters()
             },
             {
-                "name": "predictor",
-                "params": self.predictor.parameters()
-            }
-        ]
+                 "name": "predictor",
+                 "params": self.predictor.parameters()                     
+            }]
         
         return  super().learnable_params + extra_learnable_params
     
@@ -93,9 +94,7 @@ class MoBY(BaseMomentumMethod):
     def momentum_pairs(self) -> List[Tuple[Any, Any]]:
         """Add mometum pairs for base class
         """
-        extra_momentum_pairs = [(self.projector, self.momentum_projector)]
-        
-        return super().momentum_pairs + extra_momentum_pairs
+        return super().momentum_pairs + [(self.projector, self.momentum_projector)]
     
     
     @torch.no_grad()
@@ -112,7 +111,7 @@ class MoBY(BaseMomentumMethod):
     def forward(self, X: torch.Tensor):
         out = super().forward(X)
         z = self.projector(out["feats"])
-        p = nn.functional.normalize(self.predictor(z), dim=-1)        
+        p = nn.functional.normalize(self.predictor(z), dim=-1)
         out.update({"z": z, "p": p})
         
         return out
@@ -129,15 +128,15 @@ class MoBY(BaseMomentumMethod):
         
     def training_step(self, batch: List[Any], batch_idx: int) -> Dict[str, Any]:
         out = super().training_step(batch, batch_idx)
-        p1, p2 = out["p"]
+        q1, q2 = out["p"]
         k1, k2 = out["momentum_z"]
         
         with torch.no_grad():
-            z_std = F.normalize(torch.stack([k1, k2]), dim=-1).std(dim=1).mean()
+            k_std = F.normalize(torch.stack([k1, k2]), dim=-1).std(dim=1).mean()
         
         queue = self.queue.clone().detach()
-        nce_loss = (mocov2plus_loss_func(p1, k2, queue[1], self.temparture) + \
-                    mocov2plus_loss_func(p2, k1, queue[0], self.temparture)
+        nce_loss = (nsmoco_loss_func(q1, k2, queue[1], self.temparture) + \
+                    nsmoco_loss_func(q2, k1, queue[0], self.temparture)
         ) / 2
         
         keys = torch.stack((gather(k1), gather(k2)))
@@ -145,10 +144,12 @@ class MoBY(BaseMomentumMethod):
         
         metrics = {
             "train_nce_loss": nce_loss,
-            "train_z_std": z_std,
+            "train_k_std": k_std
         }
+        
         self.log_dict(metrics, on_epoch=True, sync_dist=True)
         
+        # loss of linear classifier
         class_loss = sum(out["loss"]) / self.num_large_crops
         momentum_class_loss = sum(out["momentum_loss"]) / self.num_large_crops
         
