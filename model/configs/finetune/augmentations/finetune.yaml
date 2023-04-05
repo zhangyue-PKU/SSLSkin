@@ -4,6 +4,10 @@
     crop_max_scale: 1.0
   horizontal_flip:
     prob: 0.5
+  vertical_flip:
+    prob: 0.5
+  rotate:
+    prob: 0.2
   crop_size: 224
   mean: [0.485, 0.456, 0.406]
   std: [0.229, 0.224, 0.225]
@@ -11,6 +15,10 @@
 - rrc:
     enabled: False
   horizontal_flip:
+    prob: 0.
+  vertical_flip:
+    prob: 0.
+  rotate:
     prob: 0.
   resize_size: 256
   crop_size: 224

@@ -11,18 +11,18 @@ hydra:
   run:
     dir: .
 
-name: "resnet18-supervised-isic2018"
-predict: True # whether call trainer.predict()
+name: "resnet18-supervised-isic2016"
 backbone:
   name: "resnet18"
 loss_fn: 
   name: "ce" # choose from [ce, focal, label_smoothing_ce, soft_target_ce]
 data:
-  dataset: isic2018
+  dataset: isic2016
   data_path: "data/pretrain/images"
-  train_label: "data/pretrain/ISIC_2018_train.csv"
-  val_label: "data/pretrain/ISIC_2018_test.csv"
+  train_label: "data/pretrain/ISIC_2016_train.csv"
+  val_label: "data/pretrain/ISIC_2016_test.csv"
   num_workers: 16
+  debug_transform: True
 optimizer:
   name: "sgd"
   batch_size: 512
@@ -30,17 +30,17 @@ optimizer:
   weight_decay: 0
 scheduler:
   name: "step"
-  lr_decay_steps: [60, 80]
+  lr_decay_steps: [30, 40]
 checkpoint:
   enabled: True
   dir: "trained_models"
   frequency: 1
 auto_resume:
-  enabled: False
+  enabled: True
 
 # pytorch-lightning trainer params
-max_epochs: 100
-devices: [1]
+max_epochs: 50
+devices: [0]
 sync_batchnorm: True
 accelerator: "gpu"
 strategy: "ddp"
