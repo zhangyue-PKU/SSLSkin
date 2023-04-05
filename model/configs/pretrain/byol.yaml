@@ -1,6 +1,6 @@
 defaults:
   - _self_
-  - augmentations: asymmetric.yaml
+  - augmentations: symmetric.yaml
   - wandb: private.yaml
   - override hydra/hydra_logging: disabled
   - override hydra/job_logging: disabled
@@ -11,7 +11,7 @@ hydra:
   run:
     dir: .
 
-name: "byol"
+name: "byol-symmetric"
 method: "byol"
 backbone:
   name: "resnet18"
@@ -25,11 +25,11 @@ momentum:
 data:
   dataset: isic_archive
   train_path: ./data/pretrain/images
-  num_workers: 8
+  num_workers: 10
 optimizer:
   name: "lars"
-  batch_size: 128
-  lr: 0.5
+  batch_size: 256
+  lr: 0.25
   weight_decay: 1e-6
   kwargs:
     clip_lr: True
@@ -48,7 +48,7 @@ auto_resume:
 
 # overwrite PL stuff
 max_epochs: 100
-devices: [0, 1]
+devices: [2]
 sync_batchnorm: True
 accelerator: "gpu"
 strategy: "ddp"
