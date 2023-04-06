@@ -11,32 +11,34 @@ hydra:
   run:
     dir: .
 
-name: "byol-isicarchive-linear"
+name: "byol-linear"
 finetune: False # perform finetune or linear-probbing
-predict: True # whether call trainer.predict()
 pretrain:
   method: "byol"
-  ckpt: "trained_models/byol/ehzlcvt1/byol-ehzlcvt1-ep=99.ckpt"
+  # ckpt: "trained_models/byol/ehzlcvt1/byol-ehzlcvt1-ep=99.ckpt"
+  ckpt: "trained_models/byol/q7jeim0r/byol-symmetric-q7jeim0r-ep=99.ckpt" # lr = 0.5
+  # ckpt: "trained_models/byol/jip4b0nc/byol-symmetric-jip4b0nc-ep=99.ckpt" # lr = 0.25
+  # ckpt: "trained_models/byol/vdq7vn61/byol-symmetric-vdq7vn61-ep=99.ckpt" # lr = 0.5, 2048
   ckpt_key: "momentum_backbone"
 backbone:
   name: "resnet18"
 loss_fn: 
-  name: "focal" # choose from [ce, focal, label_smoothing_ce, soft_target_ce]
+  name: "ce" # choose from [ce, focal, label_smoothing_ce, soft_target_ce]
 data:
-  dataset: isic2020
-  train_path: "./data/train/images"
-  val_path: "./data/train/images"
-  pred_path: "./data/test/images"
-  train_label_file: "./data/train/train.csv"
-  val_label_file: "./data/train/val.csv"
-  num_workers: 4
+  dataset: isic2016
+  data_path: "data/pretrain/images"
+  train_label: "data/pretrain/ISIC_2016_train.csv"
+  val_label: "data/pretrain/ISIC_2016_test.csv"
+  num_workers: 10
+  debug_transform: True
 optimizer:
   name: "sgd"
   batch_size: 512
-  lr: 0.001
+  lr: 0.01
   weight_decay: 0
 scheduler:
-  name: None
+  name: step
+  lr_decay_steps: [60, 80]
 checkpoint:
   enabled: True
   dir: "trained_models"
@@ -45,8 +47,8 @@ auto_resume:
   enabled: False
 
 # pytorch-lightning trainer params
-max_epochs: 2
-devices: [0]
+max_epochs: 100
+devices: [2]
 sync_batchnorm: True
 accelerator: "gpu"
 strategy: "ddp"
