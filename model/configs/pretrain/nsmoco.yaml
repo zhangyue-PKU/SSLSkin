@@ -20,7 +20,7 @@ method_kwargs:
   proj_output_dim: 256
   pred_hidden_dim: 2048
   queue_size: 4096
-  temperature: 0.2
+  temperature: 0.1
 momentum:
   base_tau: 0.99
   final_tau: 1.0
@@ -50,7 +50,7 @@ auto_resume:
 
 # overwrite PL stuff
 max_epochs: 100
-devices: [1]
+devices: [0]
 sync_batchnorm: True
 accelerator: "gpu"
 strategy: "ddp"
