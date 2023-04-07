@@ -1,7 +1,6 @@
 defaults:
   - _self_
   - wandb: private.yaml
-  - augmentations: augmentation.yaml
   - override hydra/hydra_logging: disabled
   - override hydra/job_logging: disabled
 
@@ -11,31 +10,42 @@ hydra:
   run:
     dir: .
 
-pretrain_method:
+name: unet-ph2
 backbone:
   name: resnet18
-  ckpt:
-  skip_layers: []
-  kwargs:
+  skip_modules: ["conv1", "layer1", "layer2", "layer3", "layer4"]
+pretrain:
+  method: mocov2plus
+  ckpt: "trained_models/mocov2plus/zo7viqnq/mocov2plus--solarization.yaml-zo7viqnq-ep=99.ckpt"
+  ckpt_key: momentum_backbone
 decoder:
   name: unet
-  encoder_channels:
-  decoder_channels:
+  encoder_channels: [3, 64, 64, 128, 256, 512]
+  decoder_channels: [256, 128, 64, 32, 16]
   use_batchnorm: False
-  attention_type: attention_type
+  attention_type: None
   center: False
+data:
+  dataset: ph2
+  root: data/ph2/
 classifier:
-  enabled: True
-  loss: ce
-  loss_kwargs:
+  enabled: False
 optimizer:
   name: sgd
-  lr:
-  batch_size:
-  weight_decay:
-  kwargs:
+  lr: 0.0001
+  batch_size: 64
+  weight_decay: 0.0
 scheduler:
   name: warmup_cosine
+  interval: epoch
 loss:
-  name: dice
-  kwargs:
+  name: ce
+
+
+max_epochs: 100
+devices: [0]
+sync_batchnorm: True
+accelerator: "gpu"
+strategy: "ddp"
+precision: 16
+log_every_n_steps: 2

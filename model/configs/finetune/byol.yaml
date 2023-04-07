@@ -11,42 +11,47 @@ hydra:
   run:
     dir: .
 
-name: "byol-isicarchive-finetune"
-finetune: True
+name: "byol-fintune"
+finetune: True # perform finetune or linear-probbing
 pretrain:
   method: "byol"
-  ckpt: "trained_models/byol/lan05rxt/byol-isic-lan05rxt-ep=99.ckpt"
+  # ckpt: "trained_models/byol/ehzlcvt1/byol-ehzlcvt1-ep=99.ckpt"
+  # ckpt: "trained_models/byol/q7jeim0r/byol-symmetric-q7jeim0r-ep=99.ckpt" # lr = 0.5
+  ckpt: "trained_models/byol/jip4b0nc/byol-symmetric-jip4b0nc-ep=99.ckpt" # lr = 0.25
+  # ckpt: "trained_models/byol/vdq7vn61/byol-symmetric-vdq7vn61-ep=99.ckpt" # lr = 0.5, 2048
+  ckpt_key: "momentum_backbone"
 backbone:
-  name: "resnet50"
+  name: "resnet18"
+loss_fn: 
+  name: "ce" # choose from [ce, focal, label_smoothing_ce, soft_target_ce]
 data:
-  dataset: isic2020
-  train_path: "./data/train/images"
-  val_path: "./data/train/images"
-  train_label_file: "./data/train/train.csv"
-  val_label_file: "./data/train/val.csv"
-  num_workers: 16
+  dataset: isic2016
+  data_path: "data/pretrain/images"
+  train_label: "data/pretrain/ISIC_2016_train.csv"
+  val_label: "data/pretrain/ISIC_2016_test.csv"
+  num_workers: 10
+  debug_transform: True
 optimizer:
   name: "sgd"
-  batch_size: 128
+  batch_size: 512
   lr: 0.01
-  weight_decay: 5e-4
+  weight_decay: 0
 scheduler:
-  name: "warmup_cosine"
-  warmup_start_lr: 0.0
+  name: step
+  lr_decay_steps: [30, 40]
 checkpoint:
   enabled: True
   dir: "trained_models"
   frequency: 1
 auto_resume:
   enabled: True
-label_smoothing: 0.1
-mixup: 0.8
-cutmix: 1.0
-finetune: True
 
-max_epochs: 100
-devices: [0]
+
+# pytorch-lightning trainer params
+max_epochs: 50
+devices: [1]
 sync_batchnorm: True
 accelerator: "gpu"
 strategy: "ddp"
-precision: 16    
+precision: 16
+log_every_n_steps: 2
