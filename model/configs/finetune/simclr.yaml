@@ -16,6 +16,7 @@ finetune: True # perform finetune or linear-probbing
 pretrain:
   method: "simclr"
   ckpt: "trained_models/simclr/44dhehnr/simclr-symmetric-512bs-44dhehnr-ep=99.ckpt"
+  # ckpt: "trained_models/simclr/4xpspqxx/simclr-4xpspqxx-ep=99.ckpt"
   ckpt_key: "backbone" #ckpt key in ["backbone", "momentum_backbone"]
 backbone:
   name: "resnet18"

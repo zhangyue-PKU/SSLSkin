@@ -1,7 +1,7 @@
 defaults:
   - _self_
   - wandb: private.yaml
-  - augmentations: linear.yaml
+  - augmentations: finetune.yaml
   - override hydra/hydra_logging: disabled
   - override hydra/job_logging: disabled
 
@@ -11,12 +11,13 @@ hydra:
   run:
     dir: .
 
-name: "simclr-linear-isic2016"
-finetune: False # perform finetune or linear-probbing
+name: "nsmoco-fintune-isic2016"
+finetune: True # perform finetune or linear-probbing
 pretrain:
-  method: "simclr"
-  ckpt: "trained_models/simclr/44dhehnr/simclr-symmetric-512bs-44dhehnr-ep=99.ckpt"
-  ckpt_key: "backbone"
+  method: "nsmoco" 
+  ckpt: "trained_models/nsmoco/cna7qk9e/nsmoco-symmetric-cna7qk9e-ep=99.ckpt" # tau = 0.2
+  # ckpt: "trained_models/nsmoco/lg1hhc97/nsmoco-symmetric-lg1hhc97-ep=99.ckpt" # tau = 0.1
+  ckpt_key: "momentum_backbone"
 backbone:
   name: "resnet18"
 loss_fn: 
@@ -35,17 +36,18 @@ optimizer:
   weight_decay: 0
 scheduler:
   name: step
-  lr_decay_steps: [60, 80]
+  lr_decay_steps: [30, 40]
 checkpoint:
   enabled: True
   dir: "trained_models"
   frequency: 1
 auto_resume:
-  enabled: False
+  enabled: True
+
 
 # pytorch-lightning trainer params
-max_epochs: 100
-devices: [1]
+max_epochs: 50
+devices: [0]
 sync_batchnorm: True
 accelerator: "gpu"
 strategy: "ddp"

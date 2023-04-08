@@ -49,6 +49,7 @@ auto_resume:
 
 
 # overwrite PL stuff
+resume_from_checkpoint: trained_models/nsmoco/egpivfa6/nsmoco-symmetric-egpivfa6-ep=89.ckpt
 max_epochs: 100
 devices: [0]
 sync_batchnorm: True

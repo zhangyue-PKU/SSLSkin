@@ -1,7 +1,7 @@
 defaults:
   - _self_
   - wandb: private.yaml
-  - augmentations: linear.yaml
+  - augmentations: finetune.yaml
   - override hydra/hydra_logging: disabled
   - override hydra/job_logging: disabled
 
@@ -11,21 +11,21 @@ hydra:
   run:
     dir: .
 
-name: "simclr-linear-isic2016"
-finetune: False # perform finetune or linear-probbing
+name: "moby-fintune-isic2019"
+finetune: True # perform finetune or linear-probbing
 pretrain:
-  method: "simclr"
-  ckpt: "trained_models/simclr/44dhehnr/simclr-symmetric-512bs-44dhehnr-ep=99.ckpt"
-  ckpt_key: "backbone"
+  method: "moby"
+  ckpt: "trained_models/moby/0bbqcp0a/moby-symmetric-0bbqcp0a-ep=99.ckpt"
+  ckpt_key: "momentum_backbone"
 backbone:
   name: "resnet18"
 loss_fn: 
   name: "ce" # choose from [ce, focal, label_smoothing_ce, soft_target_ce]
 data:
-  dataset: isic2016
+  dataset: isic2019
   data_path: "data/pretrain/images"
-  train_label: "data/pretrain/ISIC_2016_train.csv"
-  val_label: "data/pretrain/ISIC_2016_test.csv"
+  train_label: "data/pretrain/ISIC_2019_train.csv"
+  val_label: "data/pretrain/ISIC_2019_test.csv"
   num_workers: 10
   debug_transform: True
 optimizer:
@@ -35,16 +35,17 @@ optimizer:
   weight_decay: 0
 scheduler:
   name: step
-  lr_decay_steps: [60, 80]
+  lr_decay_steps: [30, 40]
 checkpoint:
   enabled: True
   dir: "trained_models"
   frequency: 1
 auto_resume:
-  enabled: False
+  enabled: True
+
 
 # pytorch-lightning trainer params
-max_epochs: 100
+max_epochs: 50
 devices: [1]
 sync_batchnorm: True
 accelerator: "gpu"
