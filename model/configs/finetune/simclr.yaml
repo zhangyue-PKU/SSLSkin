@@ -11,22 +11,22 @@ hydra:
   run:
     dir: .
 
-name: "simclr-finetune-isic2017"
+name: "simclr-finetune-isic2016"
 finetune: True # perform finetune or linear-probbing
 pretrain:
   method: "simclr"
-  ckpt: "trained_models/simclr/44dhehnr/simclr-symmetric-512bs-44dhehnr-ep=99.ckpt"
-  # ckpt: "trained_models/simclr/4xpspqxx/simclr-4xpspqxx-ep=99.ckpt"
+  # ckpt: "trained_models/simclr/44dhehnr/simclr-symmetric-512bs-44dhehnr-ep=99.ckpt"
+  ckpt: "trained_models/simclr/4xpspqxx/simclr-4xpspqxx-ep=99.ckpt"
   ckpt_key: "backbone" #ckpt key in ["backbone", "momentum_backbone"]
 backbone:
   name: "resnet18"
 loss_fn: 
   name: "ce" # choose from [ce, focal, label_smoothing_ce, soft_target_ce]
 data:
-  dataset: isic2017
+  dataset: isic2016
   data_path: "data/pretrain/images"
-  train_label: "data/pretrain/ISIC_2017_train.csv"
-  val_label: "data/pretrain/ISIC_2017_test.csv"
+  train_label: "data/pretrain/ISIC_2016_train.csv"
+  val_label: "data/pretrain/ISIC_2016_test.csv"
   num_workers: 10
   debug_transform: True
 optimizer:

@@ -44,7 +44,7 @@ checkpoint:
   dir: "trained_models"
   frequency: 1
 auto_resume:
-  enabled: True
+  enabled: False
 
 
 # pytorch-lightning trainer params

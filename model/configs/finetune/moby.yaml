@@ -11,21 +11,22 @@ hydra:
   run:
     dir: .
 
-name: "moby-fintune-isic2019"
+name: "moby-fintune-isic2016"
 finetune: True # perform finetune or linear-probbing
 pretrain:
   method: "moby"
-  ckpt: "trained_models/moby/0bbqcp0a/moby-symmetric-0bbqcp0a-ep=99.ckpt"
+  ckpt: "trained_models/moby/gmiv3reu/moby-run1-gmiv3reu-ep=99.ckpt" # pretrain ckpt
+  # ckpt: "trained_models/moby/0bbqcp0a/moby-symmetric-0bbqcp0a-ep=99.ckpt"
   ckpt_key: "momentum_backbone"
 backbone:
   name: "resnet18"
 loss_fn: 
   name: "ce" # choose from [ce, focal, label_smoothing_ce, soft_target_ce]
 data:
-  dataset: isic2019
+  dataset: isic2016
   data_path: "data/pretrain/images"
-  train_label: "data/pretrain/ISIC_2019_train.csv"
-  val_label: "data/pretrain/ISIC_2019_test.csv"
+  train_label: "data/pretrain/ISIC_2016_train.csv"
+  val_label: "data/pretrain/ISIC_2016_test.csv"
   num_workers: 10
   debug_transform: True
 optimizer:
@@ -41,12 +42,12 @@ checkpoint:
   dir: "trained_models"
   frequency: 1
 auto_resume:
-  enabled: True
+  enabled: False
 
 
 # pytorch-lightning trainer params
 max_epochs: 50
-devices: [1]
+devices: [0]
 sync_batchnorm: True
 accelerator: "gpu"
 strategy: "ddp"

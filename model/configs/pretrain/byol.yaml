@@ -16,9 +16,9 @@ method: "byol"
 backbone:
   name: "resnet18"
 method_kwargs:
-  proj_hidden_dim: 4096
+  proj_hidden_dim: 2048
   proj_output_dim: 256
-  pred_hidden_dim: 4096
+  pred_hidden_dim: 2048
 momentum:
   base_tau: 0.99
   final_tau: 1.0
@@ -29,7 +29,7 @@ data:
 optimizer:
   name: "lars"
   batch_size: 256
-  lr: 0.25
+  lr: 0.5
   weight_decay: 1e-6
   kwargs:
     clip_lr: True

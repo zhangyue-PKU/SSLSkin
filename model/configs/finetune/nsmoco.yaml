@@ -11,7 +11,7 @@ hydra:
   run:
     dir: .
 
-name: "nsmoco-fintune-isic2016"
+name: "nsmoco-fintune-isic201"
 finetune: True # perform finetune or linear-probbing
 pretrain:
   method: "nsmoco" 

@@ -11,44 +11,44 @@ hydra:
   run:
     dir: .
 
-name: "dino-isicarchive-linear"
+name: "dino-linear-isic2016"
 finetune: False # perform finetune or linear-probbing
-predict: True # whether call trainer.predict()
 pretrain:
   method: "dino"
-  ckpt: "trained_models/dino/b2lpyuuz/dino-run3-b2lpyuuz-ep=99.ckpt"
+  # ckpt: "trained_models/dino/b2lpyuuz/dino-run3-b2lpyuuz-ep=99.ckpt"
+  ckpt: "trained_models/dino/s4xjuim0/dino-symmetric-s4xjuim0-ep=99.ckpt"
   ckpt_key: "momentum_backbone"
 backbone:
   name: "resnet18"
 loss_fn: 
-  name: "focal" # choose from [ce, focal, label_smoothing_ce, soft_target_ce]
+  name: "ce" # choose from [ce, focal, label_smoothing_ce, soft_target_ce]
 data:
-  dataset: isic2020
-  train_path: "./data/train/images"
-  val_path: "./data/train/images"
-  pred_path: "./data/test/images"
-  train_label_file: "./data/train/train.csv"
-  val_label_file: "./data/train/val.csv"
-  num_workers: 16
+  dataset: isic2016
+  data_path: "data/pretrain/images"
+  train_label: "data/pretrain/ISIC_2016_train.csv"
+  val_label: "data/pretrain/ISIC_2016_test.csv"
+  num_workers: 10
+  debug_transform: True
 optimizer:
   name: "sgd"
   batch_size: 512
-  lr: 0.001
+  lr: 0.01
   weight_decay: 0
 scheduler:
-  name: None
+  name: step
+  lr_decay_steps: [30, 40]
 checkpoint:
   enabled: True
   dir: "trained_models"
   frequency: 1
 auto_resume:
-  enabled: False
+  enabled: True
 
 # pytorch-lightning trainer params
-max_epochs: 2
+max_epochs: 50
 devices: [0]
 sync_batchnorm: True
 accelerator: "gpu"
 strategy: "ddp"
 precision: 16
-log_every_n_steps: 25
+log_every_n_steps: 4

@@ -11,7 +11,7 @@ hydra:
   run:
     dir: .
 
-name: "dino-finetune-isic2019"
+name: "dino-finetune-isic2016"
 finetune: True # perform finetune or linear-probbing
 pretrain:
   method: "dino"
@@ -22,10 +22,10 @@ backbone:
 loss_fn: 
   name: "ce" # choose from [ce, focal, label_smoothing_ce, soft_target_ce]
 data:
-  dataset: isic2019
+  dataset: isic2016
   data_path: "data/pretrain/images"
-  train_label: "data/pretrain/ISIC_2019_train.csv"
-  val_label: "data/pretrain/ISIC_2019_test.csv"
+  train_label: "data/pretrain/ISIC_2016_train.csv"
+  val_label: "data/pretrain/ISIC_2016_test.csv"
   num_workers: 10
   debug_transform: True
 optimizer:

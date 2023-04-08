@@ -47,7 +47,7 @@ optimizer:
   weight_decay: 0
 scheduler:
   name: step
-  lr_decay_steps: [60, 80]
+  lr_decay_steps: [30, 50]
 checkpoint:
   enabled: True
   dir: "trained_models"
@@ -56,7 +56,7 @@ auto_resume:
   enabled: True
 
 # pytorch-lightning trainer params
-max_epochs: 100
+max_epochs: 50
 devices: [0]
 sync_batchnorm: True
 accelerator: "gpu"
