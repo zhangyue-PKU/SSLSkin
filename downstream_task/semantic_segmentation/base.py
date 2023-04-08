@@ -9,6 +9,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from model.utils.lars import LARS
 from model.utils.misc import omegaconf_select, remove_bias_and_norm_from_weight_decay
+from model.utils.metrics import compute_segmentation_metrics, accuracy_at_k, weighted_mean
 from .module import Activation
 from pl_bolts.optimizers.lr_scheduler import LinearWarmupCosineAnnealingLR
 from torch.optim.lr_scheduler import MultiStepLR
@@ -82,6 +83,8 @@ class NamedModuleHook:
 
 
 class SegmentationHead(nn.Sequential):
+    """Segentation head 
+    """
     def __init__(self, in_channels, out_channels, kernel_size=3, activation=None, upsampling=1):
         conv2d = nn.Conv2d(in_channels, out_channels, kernel_size=kernel_size, padding=kernel_size // 2)
         upsampling = nn.UpsamplingBilinear2d(scale_factor=upsampling) if upsampling > 1 else nn.Identity()
@@ -129,8 +132,8 @@ class BaseSegmentationModel(pl.LightningModule):
         "none",
     ]
     _LOSSES = {
-    "dice": DiceLoss,
-    "ce": CrossEntropyLoss
+        "dice": DiceLoss,
+        "ce": CrossEntropyLoss
     }
     
     def __init__(self, cfg: omegaconf.DictConfig):
@@ -151,7 +154,7 @@ class BaseSegmentationModel(pl.LightningModule):
         self.backbone_kwargs: Dict[str, Any] = cfg.backbone.kwargs
         self.skip_modules = cfg.backbone.skip_modules
         # initialize backbone
-        kwargs = self.backbone_kwargs
+        kwargs = self.backbone_kwargs.copy()
         self.backbone: nn.Module = self.base_model(cfg.pretrain.method, **kwargs)
         # get num_feature from backbone 
         if self.backbone_name.startswith("resnet"):
@@ -250,7 +253,7 @@ class BaseSegmentationModel(pl.LightningModule):
         assert not OmegaConf.is_missing(cfg, "optimizer.batch_size")
         assert not OmegaConf.is_missing(cfg, "optimizer.weight_decay")
         cfg.optimizer.exclude_bias_n_norm_wd = omegaconf_select(cfg, "optimizer.exclude_bias_n_norm_wd", False)
-        scale_factor = cfg.optimizer.batch_size * len(cfg.devices) * cfg.num_nodes / 256
+        scale_factor = cfg.optimizer.batch_size * len(cfg.devices) * cfg.num_nodes / 64
         cfg.optimizer.lr = cfg.optimizer.lr * scale_factor
         cfg.optimizer.classifier_lr = cfg.optimizer.classifier_lr * scale_factor
         # extra optimizer kwargs
@@ -274,8 +277,8 @@ class BaseSegmentationModel(pl.LightningModule):
         cfg.scheduler.name = omegaconf_select(cfg, "scheduler.name", "")
         cfg.scheduler.lr_decay_steps = omegaconf_select(cfg, "scheduler.lr_decay_steps", None)
         cfg.scheduler.min_lr = omegaconf_select(cfg, "scheduler.min_lr", 0.0)
-        cfg.scheduler.warmup_start_lr = omegaconf_select(cfg, "scheduler.warmup_start_lr", 3e-5)
-        cfg.scheduler.warmup_epochs = omegaconf_select(cfg, "scheduler.warmup_epochs", 10)
+        cfg.scheduler.warmup_start_lr = omegaconf_select(cfg, "scheduler.warmup_start_lr", 0)
+        cfg.scheduler.warmup_epochs = omegaconf_select(cfg, "scheduler.warmup_epochs", 0)
         cfg.scheduler.interval = omegaconf_select(cfg, "scheduler.interval", "epoch")
         assert cfg.scheduler.interval in ["step", "epoch"]
         
@@ -393,7 +396,7 @@ class BaseSegmentationModel(pl.LightningModule):
             "feats": feats
         }
         
-        if self.classifier is not None:
+        if self.classifier is not None: # add classifier logits to outs if needed
             logits = self.classifier(feats)
             out.update({"logits": logits})
         
@@ -413,8 +416,8 @@ class BaseSegmentationModel(pl.LightningModule):
         # loss of segmentation branch
         out = self(X)
         loss = self.loss_fn(out["mask"], masks)
-        # metrics = self.metric_fn(out["mask"], masks, **self.metric_args)
-        out.update({"loss": loss, "batch_size": batch_size, "metrics": {}})
+        metrics = compute_segmentation_metrics(out["mask"], masks)
+        out.update({"loss": loss, "batch_size": batch_size, "metrics": metrics})
     
         # loss of auxliliary classification branch
         if self.classifier is not None:
@@ -432,14 +435,15 @@ class BaseSegmentationModel(pl.LightningModule):
         assert "loss" in out
         
         metrics = {
-            "batch_size": out.pop("batch_size"),
+            "batch_size": out.pop("batch_size", -1),
             "loss": out["loss"]
         }
         if self.classifier is not None:
             metrics.update({"auxiliary_loss": out["auxiliary_loss"]})
-        metrics.update(out.pop("metrics"))   # metric_keys   
+        metrics.update(out.pop("metrics", {}))   # metric_keys   
         # log
-        self.log_dict(metrics, on_epoch=True, sync_dist=True)
+        log = {"train_" + key : metrics[key] for key in metrics.keys() if key != "batch_size"}
+        self.log_dict(log, on_epoch=True, sync_dist=True)
         
         if self.classifier is None:
             return out["loss"]
@@ -447,22 +451,35 @@ class BaseSegmentationModel(pl.LightningModule):
         return out["loss"] +  out["auxiliary_loss"]
     
     
-    # def validation_step(self, batch, batch_idx: int) -> Dict[str, Any]:
-    #     """Base validation step for Segmentation models"""
+    def validation_step(self, batch, batch_idx: int) -> Dict[str, Any]:
+        """Base validation step for Segmentation models"""
         
-    #     out = self._shared_step(batch, batch_idx)
+        out = self._shared_step(batch, batch_idx)
         
-    #     metrics = {
-    #         "val_batch_size": out["batch_size"],
-    #         "val_loss": out["loss"]
-    #     } 
-    #     if self.classifier is not None:
-    #         metrics.update({"val_auxiliary_loss": out["auxiliary_loss"]})
-    #     metrics.update({("val"+ k) : out[k] for k in self.metric_keys})
+        metrics = {
+            "batch_size": out["batch_size"],
+            "loss": out["loss"]
+        } 
+        if self.classifier is not None:
+            metrics.update({"auxiliary_loss": out["auxiliary_loss"]})
+        metrics.update(out["metrics"])
         
-    #     self.log_dict(metrics, on_epoch=True, sync_dist=True)
+        log = {"val_" + key: metrics[key] for key in metrics.keys() if key != "batch_size"}
         
-    #     return metrics
+        self.log_dict(log, on_epoch=True, sync_dist=True)
+        
+        return metrics
+    
+    
+    def validation_epoch_end(self, outputs ) -> None:
+        
+        log = {}
+        for key in outputs[0].keys():
+            if key == "batch_size":
+                continue
+            log.update({key: weighted_mean(outputs, key, "batch_size")})
+        
+        self.log_dict(log, on_epoch=True, sync_dist=True)
     
     
         

@@ -118,6 +118,7 @@ class UNet(BaseSegmentationModel):
     def add_and_assert_specific_cfg(cfg: omegaconf.DictConfig) -> omegaconf.DictConfig:
         """Add and assert params"""
         from omegaconf import OmegaConf
+        
         cfg = super(UNet, UNet).add_and_assert_specific_cfg(cfg)
         
         # assert deocoder not missing

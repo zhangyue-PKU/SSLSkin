@@ -365,3 +365,97 @@ class Entropy(nn.Module):
     def forward(self, x):
         b = F.softmax(x, dim=1) * F.log_softmax(x, dim=1)
         return b.sum()
+    
+    
+def dice_coef(pred, target, smooth=1.0):
+    """
+    Compute the Dice coefficient
+    Args:
+        pred (torch.Tensor): predicted segmentation mask (B, 2, H, W)
+        target (torch.Tensor): target segmentation mask (B, H, W)
+        smooth (float): smoothing factor to avoid division by zero
+    Returns:
+        torch.Tensor: Dice coefficient
+    """
+    pred = F.softmax(pred, dim=1)[:, 1, ...]  # get the foreground probability
+    intersection = (pred * target).sum(dim=(-1, -2))
+    union = pred.sum(dim=(-1, -2)) + target.sum(dim=(-1, -2))
+    dice = (2 * intersection + smooth) / (union + smooth)
+    
+    return dice.mean()
+
+
+def jaccard_coef(pred, target, smooth=1.0):
+    """
+    Compute the Jaccard coefficient
+    Args:
+        pred (torch.Tensor): predicted segmentation mask (B, 2, H, W)
+        target (torch.Tensor): target segmentation mask (B, 1, H, W)
+        smooth (float): smoothing factor to avoid division by zero
+    Returns:
+        torch.Tensor: Jaccard coefficient
+    """
+    pred = F.softmax(pred, dim=1)[:, 1, ...]  # get the foreground probability
+    intersection = (pred * target).sum(dim=(-1, -2))
+    union = pred.sum(dim=(-1, -2)) + target.sum(dim=(-1, -2)) - intersection
+    jaccard = (intersection + smooth) / (union + smooth)
+    return jaccard.mean()
+
+
+def precision(pred, target, threshold=0.5):
+    """
+    Compute the precision
+    Args:
+        pred (torch.Tensor): predicted segmentation mask (B, 2, H, W)
+        target (torch.Tensor): target segmentation mask (B, 1, H, W)
+        threshold (float): probability threshold for foreground
+    Returns:
+        torch.Tensor: precision
+    """
+    pred = F.softmax(pred, dim=1)[:, 1, ...]  # get the foreground probability
+    pred = (pred > threshold).float()
+    true_positives = (pred * target).sum()
+    false_positives = (pred * (1 - target)).sum()
+    precision = true_positives / (true_positives + false_positives)
+    return precision
+
+
+def recall(pred, target, threshold=0.5):
+    """
+    Compute the recall
+    Args:
+        pred (torch.Tensor): predicted segmentation mask (B, 2, H, W)
+        target (torch.Tensor): target segmentation mask (B,H, W)
+        threshold (float): probability threshold for foreground
+    Returns:
+        torch.Tensor: recall
+    """
+    pred = F.softmax(pred, dim=1)[:, 1, ...]  # get the foreground probability
+    pred = (pred > threshold).float()
+    true_positives = (pred * target).sum()
+    false_negatives = ((1 - pred) * target).sum()
+    recall = true_positives / (true_positives + false_negatives)
+    return recall
+
+
+def compute_segmentation_metrics(pred, target, threshold=0.5):
+    """Computes Dice Coefficient and Jaccard Index for a batch of predictions and targets.
+    Args:
+        pred (torch.Tensor): predicted tensor of shape (B, 2, H, W)
+        target (torch.Tensor): target tensor of shape (B, H, W)
+        threshold (float): threshold for binarization of predictions
+    Returns:
+        metrics (Dict[str, float]): dictionary containing the Dice Coefficient and Jaccard Index
+    """
+    dice = dice_coef(pred, target)
+    jaccard = jaccard_coef(pred, target)
+    p = precision(pred, target, threshold)
+    r = recall(pred, target, threshold)
+    
+    metrics = {'dice': dice,
+               'jaccard': jaccard,
+               'p': p,
+               'r': r}
+    
+    return metrics
+    

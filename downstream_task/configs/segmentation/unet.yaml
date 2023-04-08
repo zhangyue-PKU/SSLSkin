@@ -10,7 +10,7 @@ hydra:
   run:
     dir: .
 
-name: unet-ph2
+name: unet-ph2-mocov2plus
 backbone:
   name: resnet18
   skip_modules: ["conv1", "layer1", "layer2", "layer3", "layer4"]
@@ -24,26 +24,26 @@ decoder:
   decoder_channels: [256, 128, 64, 32, 16]
   use_batchnorm: False
   attention_type: None
-  center: False
+  center: True
+loss: # segmenation loss_fn
+  name: ce
 data:
   dataset: ph2
   root: data/ph2/
 classifier:
   enabled: False
 optimizer:
-  name: sgd
+  name: adam
   lr: 0.0001
   batch_size: 64
-  weight_decay: 0.0
+  weight_decay: 5e-4
 scheduler:
   name: warmup_cosine
-  interval: epoch
-loss:
-  name: ce
+  interval: step
 
 
 max_epochs: 100
-devices: [0]
+devices: [1]
 sync_batchnorm: True
 accelerator: "gpu"
 strategy: "ddp"

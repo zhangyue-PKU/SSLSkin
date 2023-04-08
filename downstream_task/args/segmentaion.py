@@ -1,17 +1,12 @@
-import os
-from multiprocessing.managers import BaseManager
-
 import omegaconf
 from omegaconf import OmegaConf
-from model.methods.base import BaseMethod
 from model.utils.auto_resumer import AutoResumer
 from model.utils.checkpointer import Checkpointer
 from model.utils.misc import omegaconf_select
-from timm.data.constants import IMAGENET_DEFAULT_MEAN, IMAGENET_DEFAULT_STD
 
-
+# segmentation class
 _N_CLASSES_PER_DATASET = {
-    "ph2": 2
+    "ph2": 2,
 }
 
 

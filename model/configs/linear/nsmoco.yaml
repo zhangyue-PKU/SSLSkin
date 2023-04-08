@@ -11,22 +11,22 @@ hydra:
   run:
     dir: .
 
-name: "nsmoco-linear-isic2016"
+name: "nsmoco-linear-isic2017"
 finetune: False # perform finetune or linear-probbing
 pretrain:
   method: "nsmoco" 
-  ckpt: "trained_models/nsmoco/cna7qk9e/nsmoco-symmetric-cna7qk9e-ep=99.ckpt" # tau = 0.2
-  # ckpt: "trained_models/nsmoco/lg1hhc97/nsmoco-symmetric-lg1hhc97-ep=99.ckpt" # tau = 0.1
+  # ckpt: "trained_models/nsmoco/cna7qk9e/nsmoco-symmetric-cna7qk9e-ep=99.ckpt" # tau = 0.2
+  ckpt: "trained_models/nsmoco/lg1hhc97/nsmoco-symmetric-lg1hhc97-ep=99.ckpt" # tau = 0.1
   ckpt_key: "momentum_backbone"
 backbone:
   name: "resnet18"
 loss_fn: 
   name: "ce" # choose from [ce, focal, label_smoothing_ce, soft_target_ce]
 data:
-  dataset: isic2016
+  dataset: isic2017
   data_path: "data/pretrain/images"
-  train_label: "data/pretrain/ISIC_2016_train.csv"
-  val_label: "data/pretrain/ISIC_2016_test.csv"
+  train_label: "data/pretrain/ISIC_2017_train.csv"
+  val_label: "data/pretrain/ISIC_2017_test.csv"
   num_workers: 10
   debug_transform: True
 optimizer:
@@ -46,7 +46,7 @@ auto_resume:
 
 # pytorch-lightning trainer params
 max_epochs: 50
-devices: [1]
+devices: [0]
 sync_batchnorm: True
 accelerator: "gpu"
 strategy: "ddp"

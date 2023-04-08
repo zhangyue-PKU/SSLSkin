@@ -5,6 +5,7 @@ import torchvision.transforms.functional as F
 
 from PIL import Image
 
+
 class Compose(object):
 
     def __init__(self, transforms):
@@ -17,6 +18,7 @@ class Compose(object):
         # print("Shape after composed transform:", img.shape)
         # print(mask.shape)
         return img, mask
+
 
 
 class ToTensor(object):
@@ -35,6 +37,7 @@ class ToTensor(object):
         return img, mask
 
 
+
 class RandomHorizontalFlip(object):
     def __call__(self, img, mask):
         if random.random() < 0.5:
@@ -45,6 +48,8 @@ class RandomHorizontalFlip(object):
         # print(np.array(mask).shape)
         return img, mask
 
+
+
 class RandomVerticalFlip(object):
     def __call__(self, img, mask):
         if random.random() < 0.5:
@@ -54,6 +59,8 @@ class RandomVerticalFlip(object):
         # print("Shape after VF", np.array(img).shape)
         # print(np.array(mask).shape)
         return img, mask
+
+
 
 class RandomCenterCrop(object):
     def __init__(self, scale=0.9):
@@ -68,6 +75,8 @@ class RandomCenterCrop(object):
 
         return img, mask
 
+
+
 class Normalize(object):
     def __init__(self, mean, std):
         self.mean = mean
@@ -77,6 +86,8 @@ class Normalize(object):
         img = F.normalize(img, mean=self.mean, std=self.std)
 
         return img, mask
+
+
 
 class RandomAffine(object):
     def __init__(self, angle=10, shear=5, translate=20, scale=(0.9, 1.1)):
@@ -113,4 +124,15 @@ class Resize(object):
         img = F.resize(img, size=self.size)
         mask = F.resize(mask, size=self.size)   
      
+        return img, mask
+    
+
+class CenterCrop():
+    def __init__(self, size):
+        self.size = size
+        
+    def __call__(self, img, mask):
+        img = F.center_crop(img, output_size=self.size)
+        mask = F.center_crop(mask, output_size=self.size)
+        
         return img, mask
