@@ -20,7 +20,7 @@ METHODS = {
     "dino": DINO,
     "mocov2plus": MoCoV2Plus,
     "mocov3": MoCoV3,
-    "simsam": SimSiam,
+    "simsiam": SimSiam,
     "moby": MoBY,
     "simclr":SimCLR,
     "nsmoco": NSMoCo,

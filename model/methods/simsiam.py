@@ -129,7 +129,6 @@ class SimSiam(BaseMethod):
         """
 
         out = super().training_step(batch, batch_idx)
-        class_loss = out["loss"]
         z1, z2 = out["z"]
         p1, p2 = out["p"]
 
@@ -137,9 +136,10 @@ class SimSiam(BaseMethod):
         neg_cos_sim = simsiam_loss_func(p1, z2) / 2 + simsiam_loss_func(p2, z1) / 2
 
         # calculate std of features
-        z1_std = F.normalize(z1, dim=-1).std(dim=0).mean()
-        z2_std = F.normalize(z2, dim=-1).std(dim=0).mean()
-        z_std = (z1_std + z2_std) / 2
+        with torch.no_grad():
+            z1_std = F.normalize(z1, dim=-1).std(dim=0).mean()
+            z2_std = F.normalize(z2, dim=-1).std(dim=0).mean()
+            z_std = (z1_std + z2_std) / 2
 
         metrics = {
             "train_neg_cos_sim": neg_cos_sim,
@@ -147,4 +147,6 @@ class SimSiam(BaseMethod):
         }
         self.log_dict(metrics, on_epoch=True, sync_dist=True)
 
+        class_loss = sum(out["loss"]) / self.num_large_crops
+        
         return neg_cos_sim + class_loss

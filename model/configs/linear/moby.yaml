@@ -11,22 +11,22 @@ hydra:
   run:
     dir: .
 
-name: "moby-linear-isic2016"
+name: "moby-linear-isic2018"
 finetune: False # perform finetune or linear-probbing
 pretrain:
   method: "moby"
-  ckpt: "trained_models/moby/gmiv3reu/moby-run1-gmiv3reu-ep=99.ckpt" # pretrain ckpt
-  # ckpt: "trained_models/moby/0bbqcp0a/moby-symmetric-0bbqcp0a-ep=99.ckpt"
+  # ckpt: "trained_models/moby/gmiv3reu/moby-run1-gmiv3reu-ep=99.ckpt" # pretrain ckpt
+  ckpt: "trained_models/moby/0bbqcp0a/moby-symmetric-0bbqcp0a-ep=99.ckpt"
   ckpt_key: "momentum_backbone" #ckpt key in ["backbone", "momentum_backbone"]
 backbone:
   name: "resnet18"
 loss_fn: 
   name: "ce" # choose from [ce, focal, label_smoothing_ce, soft_target_ce]
 data:
-  dataset: isic2016
+  dataset: isic2018
   data_path: "data/pretrain/images"
-  train_label: "data/pretrain/ISIC_2016_train.csv"
-  val_label: "data/pretrain/ISIC_2016_test.csv"
+  train_label: "data/pretrain/ISIC_2018_train.csv"
+  val_label: "data/pretrain/ISIC_2018_test.csv"
   num_workers: 10
   debug_transform: True
 optimizer:

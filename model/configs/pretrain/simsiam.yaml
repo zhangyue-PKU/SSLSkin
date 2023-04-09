@@ -1,6 +1,6 @@
 defaults:
   - _self_
-  - augmentations: asymmetric.yaml
+  - augmentations: symmetric.yaml
   - wandb: private.yaml
   - override hydra/hydra_logging: disabled
   - override hydra/job_logging: disabled
@@ -11,27 +11,27 @@ hydra:
   run:
     dir: .
 
-name: "simsiam"
+name: "simsiam-symmetric"
 method: "simsiam"
-backbone:
-  name: "resnet18"
 method_kwargs:
   proj_hidden_dim: 2048
   proj_output_dim: 2048
   pred_hidden_dim: 512
   temperature: 0.2
+backbone:
+  name: "resnet18"
 data:
   dataset: isic_archive
   train_path: ./data/pretrain/images
-  num_workers: 16
+  num_workers: 10
 optimizer:
   name: "sgd"
-  batch_size: 128
+  batch_size: 256
   lr: 0.5
-  classifier_lr: 0.1
   weight_decay: 1e-5
 scheduler:
   name: "warmup_cosine"
+  interval: "step"
 checkpoint:
   enabled: True
   dir: "trained_models"
@@ -41,7 +41,7 @@ auto_resume:
 
 # overwrite PL stuff
 max_epochs: 100
-devices: [0, 1]
+devices: [0]
 sync_batchnorm: True
 accelerator: "gpu"
 strategy: "ddp"

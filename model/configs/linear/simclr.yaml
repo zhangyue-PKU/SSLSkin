@@ -11,7 +11,7 @@ hydra:
   run:
     dir: .
 
-name: "simclr-linear-isic2016"
+name: "simclr-linear-isic2018"
 finetune: False # perform finetune or linear-probbing
 pretrain:
   method: "simclr"
@@ -23,10 +23,10 @@ backbone:
 loss_fn: 
   name: "ce" # choose from [ce, focal, label_smoothing_ce, soft_target_ce]
 data:
-  dataset: isic2016
+  dataset: isic2018
   data_path: "data/pretrain/images"
-  train_label: "data/pretrain/ISIC_2016_train.csv"
-  val_label: "data/pretrain/ISIC_2016_test.csv"
+  train_label: "data/pretrain/ISIC_2018_train.csv"
+  val_label: "data/pretrain/ISIC_2018_test.csv"
   num_workers: 10
   debug_transform: True
 optimizer:
@@ -46,7 +46,7 @@ auto_resume:
 
 # pytorch-lightning trainer params
 max_epochs: 50
-devices: [0]
+devices: [1]
 sync_batchnorm: True
 accelerator: "gpu"
 strategy: "ddp"
