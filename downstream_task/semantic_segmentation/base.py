@@ -183,19 +183,19 @@ class BaseSegmentationModel(pl.LightningModule):
         self.skip_hook = NamedModuleHook(self.backbone, self.skip_modules) # get features from .features
         
         # segmentation loss function
-        self.loss_fn = self._LOSSES[cfg.loss.name](**cfg.loss.kwargs)
+        self.loss_fn = self._LOSSES[cfg.loss_fn.name](**cfg.loss_fn.kwargs)
         
         # auxiliary classification head
         self.classifier = None
         if cfg.classifier.enabled:
+            self.classifier_lr = cfg.optimizer.classifier_lr
             self.classifier = nn.Linear(self.features_dim, cfg.data.num_classes)
-            self.loss_fn_classifier = self._LOSSES[cfg.classifier.loss](**cfg.classifier.loss_kwargs)
+            self.loss_fn_classifier = self._LOSSES[cfg.classifier.loss_fn](**cfg.classifier.loss_kwargs)
 
         # optimizer related
         self.optimizer: str = cfg.optimizer.name
         self.batch_size: int = cfg.optimizer.batch_size
         self.lr: float = cfg.optimizer.lr
-        self.classifier_lr = cfg.optimizer.classifier_lr
         self.weight_decay: float = cfg.optimizer.weight_decay
         self.exclude_bias_n_norm_wd = cfg.optimizer.exclude_bias_n_norm_wd
         self.extra_optimizer_kwargs = cfg.optimizer.kwargs
@@ -242,9 +242,8 @@ class BaseSegmentationModel(pl.LightningModule):
         # classifier
         cfg.classifier = omegaconf_select(cfg, "classifier", {})
         cfg.classifier.enabled = omegaconf_select(cfg, "classifier.enabled", False)
-        cfg.classifier.loss = omegaconf_select(cfg, "classifier.loss", "ce")
+        cfg.classifier.loss_fn = omegaconf_select(cfg, "classifier.loss_fn", "ce")
         cfg.classifier.loss_kwargs = omegaconf_select(cfg, "classifier.loss_kwargs", {}) 
-        cfg.optimizer.classifier_lr = omegaconf_select(cfg, "optimizer.classifier_lr", 0)
         
         # optimizer related
         cfg.optimizer = omegaconf_select(cfg, "optimizer", {})
@@ -252,10 +251,13 @@ class BaseSegmentationModel(pl.LightningModule):
         assert not OmegaConf.is_missing(cfg, "optimizer.lr")
         assert not OmegaConf.is_missing(cfg, "optimizer.batch_size")
         assert not OmegaConf.is_missing(cfg, "optimizer.weight_decay")
+        assert cfg.optimizer.name in BaseSegmentationModel._OPTIMIZERS
         cfg.optimizer.exclude_bias_n_norm_wd = omegaconf_select(cfg, "optimizer.exclude_bias_n_norm_wd", False)
         scale_factor = cfg.optimizer.batch_size * len(cfg.devices) * cfg.num_nodes / 64
         cfg.optimizer.lr = cfg.optimizer.lr * scale_factor
-        cfg.optimizer.classifier_lr = cfg.optimizer.classifier_lr * scale_factor
+        if cfg.classifier.enabled:
+            assert not OmegaConf.is_missing(cfg, "optimizer.classifier_lr")
+            cfg.optimizer.classifier_lr = cfg.optimizer.classifier_lr * scale_factor
         # extra optimizer kwargs
         cfg.optimizer.kwargs = omegaconf_select(cfg, "optimizer.kwargs", {})
         if cfg.optimizer.name == "sgd":
@@ -283,10 +285,10 @@ class BaseSegmentationModel(pl.LightningModule):
         assert cfg.scheduler.interval in ["step", "epoch"]
         
         # decoder loss
-        cfg.loss = omegaconf_select(cfg, "loss", {})
-        assert not OmegaConf.is_missing(cfg, "loss.name")
-        assert cfg.loss.name in BaseSegmentationModel._LOSSES
-        cfg.loss.kwargs = omegaconf_select(cfg, "loss.kwargs", {})
+        cfg.loss_fn = omegaconf_select(cfg, "loss_fn", {})
+        assert not OmegaConf.is_missing(cfg, "loss_fn.name")
+        assert cfg.loss_fn.name in BaseSegmentationModel._LOSSES
+        cfg.loss_fn.kwargs = omegaconf_select(cfg, "loss_fn.kwargs", {})
         
         return cfg
 
@@ -326,7 +328,6 @@ class BaseSegmentationModel(pl.LightningModule):
         # indexes of parameters without lr scheduler
         idxs_no_scheduler = [i for i, m in enumerate(learnable_params) if m.pop("static_lr", False)]
 
-        assert self.optimizer in self._OPTIMIZERS
         optimizer = self._OPTIMIZERS[self.optimizer]
 
         # create optimizer

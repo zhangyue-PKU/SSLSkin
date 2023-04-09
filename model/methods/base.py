@@ -123,6 +123,9 @@ class BaseMethod(pl.LightningModule):
         "cosine"
         "none",
     ]
+    _LOSSES = {
+        "ce": nn.CrossEntropyLoss
+    }
 
     def __init__(self, cfg: omegaconf.DictConfig):
         """Base model that implements all basic operations for all self-supervised methods.
@@ -228,25 +231,6 @@ class BaseMethod(pl.LightningModule):
         self.num_crops = self.num_small_crops + self.num_large_crops
         # turn on multicrop if there are small crops
         self.multicrop: bool = self.num_small_crops != 0
-
-        # knn online evaluation
-        self.knn_eval: bool = cfg.knn_eval.enabled
-        self.knn_k: int = cfg.knn_eval.k
-        if self.knn_eval:
-            self.knn = WeightedKNNClassifier(k=self.knn_k, distance_fx=cfg.knn_eval.distance_func)
-            
-        # online classification eval
-        self.linear_eval = cfg.linear_eval
-        if cfg.linear_eval:
-            self.num_classes: int = cfg.data.num_classes
-            assert cfg.data.num_classes >= 2, "num_class must over 2"
-            self.classifier: nn.Module = nn.Linear(self.features_dim, self.num_classes)
-            self.classifier_lr: float = cfg.optimizer.classifier_lr * self.accumulate_grad_batches
-            # classifier metrics
-            self.loss_fn = F.cross_entropy
-            self.loss_args = {"ignore_index": -1}
-            self.metric_fn = accuracy_at_k
-            self.metric_args = {"top_k": (1, max(1, min(5, cfg.data.num_classes)))}
             
         # get backbone module from _BACKBONES
         self.base_model: Callable = self._BACKBONES[cfg.backbone.name]
@@ -268,6 +252,21 @@ class BaseMethod(pl.LightningModule):
                 self.backbone.maxpool = nn.Identity()
         else:
             self.features_dim: int = self.backbone.num_features
+            
+        # knn evaluation online
+        self.knn_eval: bool = cfg.knn_eval.enabled
+        self.knn_k: int = cfg.knn_eval.k
+        if self.knn_eval:
+            self.knn = WeightedKNNClassifier(k=self.knn_k, distance_fx=cfg.knn_eval.distance_func)
+            
+        # linear eval online
+        self.linear_eval = cfg.linear_eval.enabled
+        if self.linear_eval:
+            self.num_classes: int = cfg.data.num_classes
+            self.classifier: nn.Module = nn.Linear(self.features_dim, self.num_classes)
+            self.classifier_lr: float = cfg.optimizer.classifier_lr * self.accumulate_grad_batches
+            # classifier metrics
+            self.loss_fn = self._LOSS_FN[cfg.linear_eval.loss_fn](**cfg.linear_eval.loss_kwargs)
 
 
     @staticmethod
@@ -299,8 +298,12 @@ class BaseMethod(pl.LightningModule):
         cfg.knn_eval.distance_func = omegaconf_select(cfg, "knn_eval.distance_func", "cosine")
 
         # online evaluation
-        cfg.linear_eval = omegaconf_select(cfg, "linear_eval", False)
-        
+        cfg.linear_eval = omegaconf_select(cfg, "linear_eval", {})
+        cfg.linear_eval.enabled = omegaconf_select(cfg, "linear_eval.enabled", False)
+        cfg.linear_eval.loss_fn = omegaconf_select(cfg, "linear_eval.loss_fn", "ce")
+        assert cfg.linear_eval.loss_fn in BaseMethod._LOSSES
+        cfg.linear_eval.loss_kwargs = omegaconf_select(cfg, "linear_eval.loss_kwargs", {})
+                
         # optimizer 
         cfg.optimizer = omegaconf_select(cfg, "optimizer", {})
         assert not OmegaConf.is_missing(cfg, "optimizer.name")
@@ -309,7 +312,7 @@ class BaseMethod(pl.LightningModule):
         assert not OmegaConf.is_missing(cfg, "optimizer.weight_decay")
         scale_factor = cfg.optimizer.batch_size * len(cfg.devices) * cfg.num_nodes / 256
         cfg.optimizer.lr = cfg.optimizer.lr * scale_factor
-        if cfg.linear_eval:
+        if cfg.linear_eval.enabled:
             assert not OmegaConf.is_missing(cfg, "optimizer.classifier_lr")
             cfg.optimizer.classifier_lr = cfg.optimizer.classifier_lr * scale_factor
         cfg.optimizer.exclude_bias_n_norm_wd = omegaconf_select(cfg, "optimizer.exclude_bias_n_norm_wd", False)
@@ -465,8 +468,8 @@ class BaseMethod(pl.LightningModule):
                 
         if self.linear_eval: 
             logits = self.classifier(feats.detach())
-            loss = self.loss_fn(logits, targets, **self.loss_args)
-            metrics = self.metric_fn(logits, targets, **self.metric_args)
+            loss = self.loss_fn(logits, targets)
+            metrics = accuracy_at_k(logits, targets, top_k=(1, min(5, self.num_classes)))
             out.update({"loss": loss, "logits": logits, "metrics": metrics}) # feats, loss, logits, metrics keys and other forward
         else:
             out.update({"loss": 0.}) # dummy loss
@@ -507,7 +510,7 @@ class BaseMethod(pl.LightningModule):
             # log metrics and remove them from outs
             loss = sum(outs["loss"]) / self.num_large_crops
             log = {"train" + "_class_loss": loss}
-            metrics = outs.pop("metrics", {}) # metrics type List[Dict]
+            metrics = outs.pop("metrics", []) # metrics type List[Dict]
             log.update({f"train_{k}": sum(m[k] for m in metrics) / self.num_large_crops \
                                                     for k in metrics[0].keys()})
             self.log_dict(log, on_epoch=True, sync_dist=True)
@@ -574,12 +577,12 @@ class BaseMethod(pl.LightningModule):
             if key == "batch_size":
                 continue
             weighted_mean_value = weighted_mean(outs, key, "batch_size")
-            log.update({f"val_{key}": weighted_mean_value})
+            log.update({key : weighted_mean_value})
                 
         if self.knn_eval and not self.trainer.running_sanity_check:
             knn_metrics = self.knn.compute()
             for key in knn_metrics.keys():
-                log.update({f"val_knn_{key}": knn_metrics[key]})
+                log.update({f"knn_{key}": knn_metrics[key]})
 
         self.log_dict(log, on_epoch=True, sync_dist=True)
 
@@ -721,8 +724,8 @@ class BaseMomentumMethod(BaseMethod):
 
         if self.momentum_linear_eval:
             logits = self.momentum_classifier(feats.detach())
-            loss = self.loss_fn(logits, targets, **self.loss_args)
-            metrics = self.metric_fn(logits, targets, **self.metric_args)
+            loss = self.loss_fn(logits, targets)
+            metrics = accuracy_at_k(logits, targets, top_k=(1, min(5, self.num_classes)))
             out.update({"logits": logits, "loss": loss, "metrics": metrics})
         else:
             out.update({"loss": 0.})
@@ -758,7 +761,7 @@ class BaseMomentumMethod(BaseMethod):
         if self.momentum_linear_eval:
             loss = sum(momentum_outs["loss"]) / self.num_large_crops
             log = {"momentum_train" + "_class_loss": loss}
-            metrics = momentum_outs.pop("metrics", {}) # metrics type List[Dict]
+            metrics = momentum_outs.pop("metrics", []) # metrics type List[Dict]
             log.update({f"momentum_train_{k}": sum(m[k] for m in metrics) / self.num_large_crops \
                                                     for k in metrics[0].keys()})
             self.log_dict(log, on_epoch=True, sync_dist=True)
@@ -850,6 +853,6 @@ class BaseMomentumMethod(BaseMethod):
                 if key == "batch_size":
                     continue
                 stats = weighted_mean(momentum_outs, key, "batch_size")
-                log.update({f"momentum_val_{key}": stats})
+                log.update({f"momentum_{key}": stats})
             
             self.log_dict(log, on_epoch= True, sync_dist=True)

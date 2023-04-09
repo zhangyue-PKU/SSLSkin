@@ -9,16 +9,18 @@
     
     translation refer to data/ph2/modify_ph2.py
 """
+import sys
+sys.path.append("/home/zhangyue/SSLSkinLesion")
 import os
 from PIL import Image
 from torch.utils.data import Dataset
 import downstream_task.dataset.transform as t
 
-class PH2Dataset(Dataset):
-    def __init__(self, root,  mode='train'):
+class ISICDataset(Dataset):
+    def __init__(self, root, mode='train'):
         self.root = root
         self.mode = mode
-
+        
         # 读取文件名和标签
         if mode == 'train':
             txt_file = os.path.join(root, 'train.txt')
@@ -51,11 +53,11 @@ class PH2Dataset(Dataset):
 
     def __getitem__(self, index):
         # 读取图像
-        image_file = os.path.join(self.root, 'images', self.file_list[index] + '.bmp')
+        image_file = os.path.join(self.root, 'images', self.file_list[index] + '.jpg')
         image = Image.open(image_file).convert('RGB')
 
         # 读取标签
-        mask_file = os.path.join(self.root,  'masks', self.file_list[index] + '_lesion.bmp')
+        mask_file = os.path.join(self.root,  'masks', self.file_list[index] + '_Segmentation.png')
         mask = Image.open(mask_file).convert("L")
         
         image, mask = self.transform(image, mask)
@@ -69,12 +71,11 @@ class PH2Dataset(Dataset):
 if __name__ == "__main__":
     from torchvision import transforms
     import numpy as np
-    ph2_dataset = PH2Dataset(
-        "/home/zhangyue/SSLSkinLesion/data/ph2",
+    ph2_dataset = ISICDataset(
+        "/home/zhangyue/SSLSkinLesion/data/isic2016",
         mode="train"
     )
     img, mask = ph2_dataset[0]
-    import pdb; pdb.set_trace()
     # 创建一个反转换的转换对象
     mean = [0.485, 0.456, 0.406]   # ImageNet均值
     std = [0.229, 0.224, 0.225]    # ImageNet标准差
