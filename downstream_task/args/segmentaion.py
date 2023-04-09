@@ -8,6 +8,7 @@ from model.utils.misc import omegaconf_select
 _N_CLASSES_PER_DATASET = {
     "ph2": 2,
     "isic2016": 2,
+    "isic2017": 2,
 }
 
 

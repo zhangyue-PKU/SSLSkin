@@ -3,7 +3,8 @@ from .isicdataset import ISICDataset
 
 DATASET = {
     "ph2": PH2Dataset,
-    "isic2016": ISICDataset
+    "isic2016": ISICDataset,
+    "isic2017": ISICDataset,
 }
 __all__ = [
     "PH2Dataset"

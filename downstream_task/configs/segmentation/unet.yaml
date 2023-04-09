@@ -10,12 +10,12 @@ hydra:
   run:
     dir: .
 
-name: unet-isic2016-mocov2plus
+name: unet-isic2017-scratch
 backbone:
   name: resnet18
   skip_modules: ["conv1", "layer1", "layer2", "layer3", "layer4"]
 pretrain:
-  method: mocov2plus
+  method: None
   ckpt: "trained_models/mocov2plus/zo7viqnq/mocov2plus--solarization.yaml-zo7viqnq-ep=99.ckpt" # mocov2plus
   # ckpt: "trained_models/byol/vdq7vn61/byol-symmetric-vdq7vn61-ep=99.ckpt" # byol
   # ckpt: "trained_models/moby/0bbqcp0a/moby-symmetric-0bbqcp0a-ep=99.ckpt" # moby
@@ -34,8 +34,8 @@ decoder:
 loss_fn: # segmenation loss_fn
   name: ce
 data:
-  dataset: isic2016
-  root: data/isic2016/
+  dataset: isic2017
+  root: data/isic2017/
 classifier:
   enabled: False
 optimizer:
@@ -55,7 +55,7 @@ auto_resume:
 
 
 max_epochs: 100
-devices: [1]
+devices: [0]
 sync_batchnorm: True
 accelerator: "gpu"
 strategy: "ddp"
