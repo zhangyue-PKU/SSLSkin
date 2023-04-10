@@ -9,6 +9,7 @@ _N_CLASSES_PER_DATASET = {
     "ph2": 2,
     "isic2016": 2,
     "isic2017": 2,
+    "isic2018": 2
 }
 
 

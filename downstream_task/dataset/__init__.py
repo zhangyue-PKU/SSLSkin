@@ -5,6 +5,7 @@ DATASET = {
     "ph2": PH2Dataset,
     "isic2016": ISICDataset,
     "isic2017": ISICDataset,
+    "isic2018": ISICDataset
 }
 __all__ = [
     "PH2Dataset"
