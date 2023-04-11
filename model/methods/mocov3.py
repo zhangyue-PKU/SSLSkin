@@ -177,7 +177,7 @@ class MoCoV3(BaseMomentumMethod):
 
 
     @torch.no_grad()
-    def momentum_forward(self, X: torch.Tensor) -> Dict:
+    def forward_momentum(self, X: torch.Tensor) -> Dict:
         """Performs the forward pass of the momentum backbone and projector.
 
         Args:
@@ -188,7 +188,7 @@ class MoCoV3(BaseMomentumMethod):
                 the parent and the momentum projected features.
         """
 
-        out = super().momentum_forward(X)
+        out = super().forward_momentum(X)
         k = self.momentum_projector(out["feats"])
         out.update({"k": k})
         return out

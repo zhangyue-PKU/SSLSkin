@@ -26,7 +26,7 @@ momentum:
 data:
   dataset: isic_archive
   train_path: ./data/pretrain/images
-  num_workers: 20
+  num_workers: 10
   debug_augmentations: True
 optimizer:
   name: "lars"
