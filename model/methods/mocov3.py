@@ -207,7 +207,6 @@ class MoCoV3(BaseMomentumMethod):
         """
 
         out = super().training_step(batch, batch_idx)
-        class_loss = out["loss"] if self.linear_eval else 0
         Q = out["q"]
         K = out["momentum_k"]
 
@@ -219,5 +218,8 @@ class MoCoV3(BaseMomentumMethod):
             "train_contrastive_loss": contrastive_loss,
         }
         self.log_dict(metrics, on_epoch=True, sync_dist=True)
+        
+        class_loss = sum(out["loss"]) / self.num_large_crops
+        momentum_class_loss = sum(out["momentum_loss"]) / self.num_large_crops
 
-        return contrastive_loss + class_loss
+        return contrastive_loss + class_loss + momentum_class_loss

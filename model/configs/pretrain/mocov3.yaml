@@ -1,6 +1,6 @@
 defaults:
   - _self_
-  - augmentations: asymmetric.yaml
+  - augmentations: -solarization.yaml
   - wandb: private.yaml
   - override hydra/hydra_logging: disabled
   - override hydra/job_logging: disabled
@@ -11,14 +11,14 @@ hydra:
   run:
     dir: .
 
-name: "mocov3"
+name: "mocov3-symmetric"
 method: "mocov3"
 backbone:
   name: "resnet18"
 method_kwargs:
-  proj_hidden_dim: 4096
+  proj_hidden_dim: 2048
   proj_output_dim: 256
-  pred_hidden_dim: 4096
+  pred_hidden_dim: 2048
   temperature: 0.2
 momentum:
   base_tau: 0.99
@@ -26,10 +26,11 @@ momentum:
 data:
   dataset: isic_archive
   train_path: ./data/pretrain/images
-  num_workers: 16
+  num_workers: 20
+  debug_augmentations: True
 optimizer:
   name: "lars"
-  batch_size: 64
+  batch_size: 256
   lr: 0.3
   weight_decay: 1e-6
   kwargs:
@@ -38,17 +39,18 @@ optimizer:
     exclude_bias_n_norm: True
 scheduler:
   name: "warmup_cosine"
+  interval: "step"
 checkpoint:
   enabled: True
   dir: "trained_models"
   frequency: 1
 auto_resume:
-  enabled: False
+  enabled: True
 
 
 # overwrite PL stuff
 max_epochs: 100
-devices: [0, 1]
+devices: [1]
 sync_batchnorm: True
 accelerator: "gpu"
 strategy: "ddp"
