@@ -1,0 +1,64 @@
+defaults:
+  - _self_
+  - wandb: private.yaml
+  - override hydra/hydra_logging: disabled
+  - override hydra/job_logging: disabled
+
+# disable hydra outputs
+hydra:
+  output_subdir: null
+  run:
+    dir: .
+
+name: fpn-isic2016-scratch
+backbone:
+  name: resnet18
+  skip_modules: ["conv1", "layer1", "layer2", "layer3", "layer4"]
+pretrain:
+  method: None
+  # ckpt: "trained_models/mocov2plus/zo7viqnq/mocov2plus--solarization.yaml-zo7viqnq-ep=99.ckpt" # mocov2plus
+  # ckpt: "trained_models/byol/vdq7vn61/byol-symmetric-vdq7vn61-ep=99.ckpt" # byol
+  # ckpt: "trained_models/moby/0bbqcp0a/moby-symmetric-0bbqcp0a-ep=99.ckpt" # moby
+  # ckpt: "trained_models/nsmoco/lg1hhc97/nsmoco-symmetric-lg1hhc97-ep=99.ckpt" # nsmoco, tau=0.1
+  # ckpt: "trained_models/nsmoco/cna7qk9e/nsmoco-symmetric-cna7qk9e-ep=99.ckpt" # tau = 0.2
+  # ckpt: "trained_models/dino/s4xjuim0/dino-symmetric-s4xjuim0-ep=99.ckpt" # dino
+  # ckpt: "trained_models/simclr/4xpspqxx/simclr-4xpspqxx-ep=99.ckpt" # simclr, bs=256
+  ckpt_key: momentum_backbone
+decoder:
+  name: fpn
+  encoder_channels: [3, 64, 64, 128, 256, 512]
+  encoder_depth: 5
+  pyramid_channels: 256
+  segmentation_channels: 128
+  dropout: 0.2
+  merge_policy: add
+loss_fn: # segmenation loss_fn
+  name: ce
+data:
+  dataset: isic2016
+  root: data/isic2016/
+classifier:
+  enabled: False
+optimizer:
+  name: adam
+  lr: 0.0001
+  batch_size: 64
+  weight_decay: 5e-4
+scheduler:
+  name: warmup_cosine
+  interval: step
+checkpoint:
+  enabled: True
+  dir: "trained_models"
+  frequency: 1
+auto_resume:
+  enabled: False
+
+
+max_epochs: 100
+devices: [0]
+sync_batchnorm: True
+accelerator: "gpu"
+strategy: "ddp"
+precision: 16
+log_every_n_steps: 2

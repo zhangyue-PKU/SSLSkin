@@ -1,11 +1,14 @@
 from .base import BaseSegmentationModel
 from .unet import UNet
+from .fpn import FPN
 
 METHODS = {
-    "unet": UNet
+    "unet": UNet,
+    "fpn": FPN,
 }
 
 all = [
     "BaseSegmentationModel",
-    "UNet"
+    "UNet",
+    "FPN",
 ]
