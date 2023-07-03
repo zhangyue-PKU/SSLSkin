@@ -26,6 +26,7 @@ class NSMoCo(BaseMomentumMethod):
         
         self.temparture = cfg.method_kwargs.temperature
         self.queue_size = cfg.method_kwargs.queue_size
+        self.topk = 0
         
         proj_output_dim = cfg.method_kwargs.proj_output_dim
         proj_hidden_dim = cfg.method_kwargs.proj_hidden_dim
@@ -124,7 +125,12 @@ class NSMoCo(BaseMomentumMethod):
         out.update({"z": z})
         
         return out
-        
+    
+    
+    def on_train_epoch_start(self) -> None:
+        topk = max(int(( 1 - self.current_epoch / self.max_epochs) * self.queue_size), 1)
+        self.topk = topk
+
         
     def training_step(self, batch: List[Any], batch_idx: int) -> Dict[str, Any]:
         out = super().training_step(batch, batch_idx)
@@ -135,8 +141,8 @@ class NSMoCo(BaseMomentumMethod):
             k_std = F.normalize(torch.stack([k1, k2]), dim=-1).std(dim=1).mean()
         
         queue = self.queue.clone().detach()
-        nce_loss = (nsmoco_loss_func(q1, k2, queue[1], self.temparture) + \
-                    nsmoco_loss_func(q2, k1, queue[0], self.temparture)
+        nce_loss = (nsmoco_loss_func(q1, k2, queue[1], self.topk, self.temparture) + \
+                    nsmoco_loss_func(q2, k1, queue[0], self.topk, self.temparture)
         ) / 2
         
         keys = torch.stack((gather(k1), gather(k2)))

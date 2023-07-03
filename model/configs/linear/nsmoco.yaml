@@ -16,7 +16,8 @@ finetune: False # perform finetune or linear-probbing
 pretrain:
   method: "nsmoco" 
   # ckpt: "trained_models/nsmoco/cna7qk9e/nsmoco-symmetric-cna7qk9e-ep=99.ckpt" # tau = 0.2
-  ckpt: "trained_models/nsmoco/lg1hhc97/nsmoco-symmetric-lg1hhc97-ep=99.ckpt" # tau = 0.1
+  # ckpt: "trained_models/nsmoco/lg1hhc97/nsmoco-symmetric-lg1hhc97-ep=99.ckpt" # tau = 0.1
+  ckpt: "trained_models/nsmoco/a8yl9hxw/nsmoco-symmetric-a8yl9hxw-ep=99.ckpt" # gradual add
   ckpt_key: "momentum_backbone"
 backbone:
   name: "resnet18"

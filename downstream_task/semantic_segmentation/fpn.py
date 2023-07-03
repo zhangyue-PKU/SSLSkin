@@ -1,3 +1,7 @@
+"""This code modified from segmentation_models.pytorch
+see: https://github.com/qubvel/segmentation_models.pytorch/blob/e7cbea0bbd546167b9d1757b2cfeca3fbe26a33e/segmentation_models_pytorch/decoders/fpn/decoder.py
+"""
+
 from typing import *
 
 import omegaconf
@@ -84,8 +88,8 @@ class FPN(BaseSegmentationModel):
         segmentation_channels: int = cfg.decoder.segmentation_channels
         dropout: float = cfg.decoder.dropout
         merge_policy: str = cfg.decoder.merge_policy
+        out_channels: int = segmentation_channels if merge_policy == "add" else segmentation_channels * 4
         
-        out_channels = segmentation_channels if merge_policy == "add" else segmentation_channels * 4
         if encoder_depth < 3:
             raise ValueError("Encoder depth for FPN decoder cannot be less than 3, got {}.".format(encoder_depth))
 

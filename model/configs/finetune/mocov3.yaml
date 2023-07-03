@@ -11,23 +11,21 @@ hydra:
   run:
     dir: .
 
-name: "nsmoco-fintune-isic2019"
+name: "mocov3-fintune-isic2016"
 finetune: True # perform finetune or linear-probbing
 pretrain:
-  method: "nsmoco" 
-  # ckpt: "trained_models/nsmoco/cna7qk9e/nsmoco-symmetric-cna7qk9e-ep=99.ckpt" # tau = 0.2
-  # ckpt: "trained_models/nsmoco/lg1hhc97/nsmoco-symmetric-lg1hhc97-ep=99.ckpt" # tau = 0.1
-  ckpt: "trained_models/nsmoco/a8yl9hxw/nsmoco-symmetric-a8yl9hxw-ep=99.ckpt" # gradual add
-  ckpt_key: "momentum_backbone"
+  method: "mocov3"
+  ckpt: "trained_models/mocov3/sk8bajlv/mocov3-symmetric-sk8bajlv-ep=99.ckpt"
+  ckpt_key: "momentum_backbone" #ckpt key in ["backbone", "momentum_backbone"]
 backbone:
   name: "resnet18"
 loss_fn: 
   name: "ce" # choose from [ce, focal, label_smoothing_ce, soft_target_ce]
 data:
-  dataset: isic2019
+  dataset: isic2016
   data_path: "data/pretrain/images"
-  train_label: "data/pretrain/ISIC_2019_train.csv"
-  val_label: "data/pretrain/ISIC_2019_test.csv"
+  train_label: "data/pretrain/ISIC_2016_train.csv"
+  val_label: "data/pretrain/ISIC_2016_test.csv"
   num_workers: 10
   debug_transform: True
 optimizer:

@@ -22,7 +22,11 @@ import torch.nn.functional as F
 
 
 def nsmoco_loss_func(
-    query: torch.Tensor, key: torch.Tensor, queue: torch.Tensor, temperature=0.1
+    query: torch.Tensor, 
+    key: torch.Tensor, 
+    queue: torch.Tensor, 
+    topk: int, 
+    temperature=0.1
 ) -> torch.Tensor:
     """Computes MoCo's loss given a batch of queries from view 1, a batch of keys from view 2 and a
     queue of past elements.
@@ -40,7 +44,7 @@ def nsmoco_loss_func(
     batch_size = query.shape[0]
     pos = torch.einsum("nc,nc->n", [query, key]).unsqueeze(-1)
     neg = torch.einsum("nc,ck->nk", [query, queue])
-    neg_topk, _ = torch.topk(neg, k=batch_size, dim=-1)
+    neg_topk, _ = torch.topk(neg, k=topk, dim=-1)
     logits = torch.cat([pos, neg_topk], dim=1)
     logits /= temperature
     targets = torch.zeros(query.size(0), device=query.device, dtype=torch.long)

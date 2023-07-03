@@ -1,4 +1,7 @@
+import os
 import logging
+import numpy as np
+import cv2
 from functools import partial
 from typing import Any, Callable, Dict, List, Sequence, Tuple, Union
 
@@ -37,6 +40,9 @@ from model.backbones import (
     wide_resnet28w8,
 )
 from downstream_task.losses import DiceLoss, CrossEntropyLoss
+from PIL import Image
+from timm.data.constants import IMAGENET_DEFAULT_MEAN, IMAGENET_DEFAULT_STD
+from torchvision import transforms
 
 
 
@@ -212,6 +218,9 @@ class BaseSegmentationModel(pl.LightningModule):
                 f"Using scheduler_interval={self.scheduler_interval} might generate "
                 "issues when resuming a checkpoint."
             )
+            
+        # predict
+        self.predict_saved_dir = os.path.join(cfg.predict.saved_dir, cfg.decoder.name)
 
 
     @staticmethod
@@ -238,6 +247,12 @@ class BaseSegmentationModel(pl.LightningModule):
             assert cfg.pretrain.ckpt.endswith(".ckpt") \
                 or cfg.pretrain.ckpt.endswith(".pth") \
                 or cfg.pretrain.ckpt.endswith(".pt")
+                
+        # check predict configs
+        cfg.predict = omegaconf_select(cfg, "predict", {})
+        cfg.predict.enabled = omegaconf_select(cfg, "predict.enabled", False)
+        cfg.predict.batch_size = omegaconf_select(cfg, "predict.batch_size", 8)
+        cfg.predict.saved_dir = omegaconf_select(cfg, "predict.saved_dir", "predict")
         
         # classifier
         cfg.classifier = omegaconf_select(cfg, "classifier", {})
@@ -415,7 +430,7 @@ class BaseSegmentationModel(pl.LightningModule):
         batch_size = X.size(0)
         
         # loss of segmentation branch
-        out = self(X)
+        out = self(X) # inner_feats, feats, mask, #logits 
         loss = self.loss_fn(out["mask"], masks)
         metrics = compute_segmentation_metrics(out["mask"], masks)
         out.update({"loss": loss, "batch_size": batch_size, "metrics": metrics})
@@ -472,6 +487,58 @@ class BaseSegmentationModel(pl.LightningModule):
         return metrics
     
     
+    def predict_step(self, batch: Any, batch_idx: int, dataloader_idx: int = 0) -> Any:
+        """Predict step for segmentation model"""
+        # import pdb; pdb.set_trace()
+        # unpack batch
+        X, paths = batch
+        
+        if self.classifier is not None:
+            X, masks, targets = X
+        else:
+            X, masks = X
+        
+        batch_size = len(paths)
+        
+        # predict forward 
+        out = self(X)
+        pred_mask = out["mask"].argmax(dim=1)
+        
+        # unnormalize function
+        unnormalize = transforms.Normalize(tuple(-1 * m / s for m, s in zip(IMAGENET_DEFAULT_MEAN, IMAGENET_DEFAULT_STD)), tuple(1.0 / s for s in IMAGENET_DEFAULT_STD))
+        X_unnormalized = unnormalize(X)
+        
+        # post process of masks
+        for i in range(batch_size): 
+            filename, extension = os.path.splitext(os.path.basename(paths[i]))
+            
+            # saving predictive mask
+            pred_mask_i = pred_mask[i].cpu().numpy()
+            pred_mask_im = Image.fromarray(pred_mask_i.astype(np.uint8) * 255)
+            pred_mask_im.save(os.path.join(self.predict_saved_dir, filename + "_segmentation.png"))
+            
+            # saving gt mask
+            gt_mask = masks[i].cpu().numpy() 
+            gt_mask_im = Image.fromarray(gt_mask.astype(np.uint8) * 255)
+            gt_mask_im.save(os.path.join(self.predict_saved_dir, filename + "_gt.png"))
+            
+            # saving original image
+            rgb = X_unnormalized[i].cpu().numpy().transpose(1, 2, 0)
+            rgb_im = Image.fromarray( (rgb * 255).astype(np.uint8))
+            rgb_im.save(os.path.join(self.predict_saved_dir, filename + ".png"))
+            
+            # gt_color_rgb = np.array([200,86,98], dtype=np.uint8)
+            # mask_color_rgb = np.array([38,150,126], dtype=np.uint8)
+            # import pdb; pdb.set_trace()
+            # color_mask = np.zeros_like(rgb)
+            # color_mask[pred_mask_i] = mask_color_rgb
+            
+            # alpha = 0.6
+            # output_image = cv2.addWeighted((rgb * 255).astype(np.uint8), 1 - alpha, color_mask.astype(np.uint8), alpha, 0)
+            # output_image = Image.fromarray(output_image.astype(np.uint8))
+            # output_image.save(os.path.join(self.predict_saved_dir, filename + "_mix.png"))
+            
+
     def validation_epoch_end(self, outputs ) -> None:
         
         log = {}

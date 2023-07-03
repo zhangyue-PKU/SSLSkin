@@ -10,20 +10,21 @@ hydra:
   run:
     dir: .
 
-name: unet-isic2018-simclr
+name: unet-ph2-scratch
 backbone:
   name: resnet18
   skip_modules: ["conv1", "layer1", "layer2", "layer3", "layer4"]
 pretrain:
-  method: simclr
+  method: None
   # ckpt: "trained_models/mocov2plus/zo7viqnq/mocov2plus--solarization.yaml-zo7viqnq-ep=99.ckpt" # mocov2plus
   # ckpt: "trained_models/byol/vdq7vn61/byol-symmetric-vdq7vn61-ep=99.ckpt" # byol
   # ckpt: "trained_models/moby/0bbqcp0a/moby-symmetric-0bbqcp0a-ep=99.ckpt" # moby
   # ckpt: "trained_models/nsmoco/lg1hhc97/nsmoco-symmetric-lg1hhc97-ep=99.ckpt" # nsmoco, tau=0.1
-  # ckpt: "trained_models/nsmoco/cna7qk9e/nsmoco-symmetric-cna7qk9e-ep=99.ckpt" # tau = 0.2
+  ckpt: "trained_models/nsmoco/cna7qk9e/nsmoco-symmetric-cna7qk9e-ep=99.ckpt" # tau = 0.2
   # ckpt: "trained_models/dino/s4xjuim0/dino-symmetric-s4xjuim0-ep=99.ckpt" # dino
-  ckpt: "trained_models/simclr/4xpspqxx/simclr-4xpspqxx-ep=99.ckpt" # simclr, bs=256
-  ckpt_key: backbone
+  # ckpt: "trained_models/simclr/4xpspqxx/simclr-4xpspqxx-ep=99.ckpt" # simclr, bs=256
+  # ckpt: "trained_models/mocov3/sk8bajlv/mocov3-symmetric-sk8bajlv-ep=99.ckpt" # mocov3
+  ckpt_key: momentum_backbone
 decoder:
   name: unet
   encoder_channels: [3, 64, 64, 128, 256, 512]
@@ -34,8 +35,8 @@ decoder:
 loss_fn: # segmenation loss_fn
   name: ce
 data:
-  dataset: isic2018
-  root: data/isic2018/
+  dataset: ph2
+  root: data/ph2/
 classifier:
   enabled: False
 optimizer:
@@ -52,10 +53,14 @@ checkpoint:
   frequency: 1
 auto_resume:
   enabled: False
+predict:
+  enabled: True
+  batch_size: 8
+  saved_dir: "predict"
 
 
 max_epochs: 100
-devices: [1]
+devices: [0]
 sync_batchnorm: True
 accelerator: "gpu"
 strategy: "ddp"

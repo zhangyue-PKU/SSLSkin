@@ -231,7 +231,7 @@ class LightlyDataset:
         fname = self.index_to_filename(self.dataset, index)
         sample, target = self.dataset.__getitem__(index)
 
-        return  (index, sample, target)
+        return  (fname, sample, target)
 
 
     def __len__(self):
